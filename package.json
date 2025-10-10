@@ -25,6 +25,7 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:linux": "electron-builder --linux",
+    "dist:linux:local": "yarn run dist:linux",
     "dist:linux:targz": "electron-builder --x64 --armv7l --arm64 -l tar.gz",
     "dist:linux:deb": "electron-builder --x64 --armv7l --arm64 -l deb",
     "dist:linux:rpm": "electron-builder --x64 --armv7l --arm64 -l rpm",
@@ -48,8 +49,8 @@
     "yargs": "17.7.2"
   },
   "devDependencies": {
-    "electron": "^27.0.2",
-    "electron-builder": "24.6.4",
+    "electron": "38.2.2",
+    "electron-builder": "26.0.12",
     "eslint": "8.51.0",
     "yarn": "1.22.19"
   },
@@ -73,11 +74,6 @@
       "executableName": "outlook-for-linux",
       "synopsis": "Outlook for Linux",
       "description": "Unofficial Microsoft Outlook client for Linux using Electron. It uses the Web App and wraps it as a standalone application using Electron.",
-      "desktop": {
-        "Name": "Outlook for Linux",
-        "Comment": "Unofficial client for Microsoft Outlook for Linux",
-        "StartupWMClass": "outlook-for-linux"
-      },
       "target": [
         "rpm",
         "deb",
