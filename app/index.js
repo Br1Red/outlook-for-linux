@@ -35,6 +35,7 @@ try {
 }
 
 const certificateModule = require('./certificate');
+const notificationModule = require('./notification');
 const gotTheLock = app.requestSingleInstanceLock();
 const mainAppWindow = require('./mainAppWindow');
 
@@ -76,6 +77,8 @@ if (!gotTheLock) {
 	ipcMain.handle('saveZoomLevel', handleSaveZoomLevel);
 	ipcMain.handle('play-notification-sound', playNotificationSound);
 	ipcMain.handle('set-badge-count', setBadgeCountHandler);
+	ipcMain.handle('showEmailNotification', handleShowEmailNotification);
+	ipcMain.handle('showReminderNotification', handleShowReminderNotification);
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -178,11 +181,33 @@ function handleCertificateError() {
 
 /**
  * Handle user-status-changed message
- * 
- * @param {*} event 
- * @param {*} count 
+ *
+ * @param {*} event
+ * @param {*} count
  */
 async function setBadgeCountHandler(event, count) {
 	logger.debug(`Badge count set to '${count}'`);
 	app.setBadgeCount(count);
+}
+
+/**
+ * Handle email notification from preload script
+ *
+ * @param {*} event
+ * @param {{address: string, subject: string}} notification
+ */
+async function handleShowEmailNotification(event, notification) {
+	console.log(`[Main] Email notification: ${notification.address} - ${notification.subject}`);
+	notificationModule.showEmailNotification(notification);
+}
+
+/**
+ * Handle reminder notification from preload script
+ *
+ * @param {*} event
+ * @param {{text: string, time: string}} notification
+ */
+async function handleShowReminderNotification(event, notification) {
+	console.log(`[Main] Reminder notification: ${notification.text} (${notification.time})`);
+	notificationModule.showReminderNotification(notification);
 }

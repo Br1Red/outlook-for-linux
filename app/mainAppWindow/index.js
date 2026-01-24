@@ -10,7 +10,8 @@ const exec = require('child_process').exec;
 const TrayIconChooser = require('../browser/tools/trayIconChooser');
 // eslint-disable-next-line no-unused-vars
 const { AppConfiguration } = require('../appConfiguration');
-const connMgr =  require('../connectionManager');
+const connMgr = require('../connectionManager');
+const notificationModule = require('../notification');
 
 /**
  * @type {TrayIconChooser}
@@ -43,6 +44,9 @@ exports.onAppReady = async function onAppReady(mainConfig) {
 	});
 
 	window = await createWindow();
+
+	// Initialize notification module with window and icon
+	notificationModule.init(window, iconChooser.getFile());
 
 	new Menus(window, config, iconChooser.getFile());
 	addEventHandlers();

@@ -29,6 +29,11 @@ exports = module.exports = (Menus) => ({
 			click: () => Menus.debug(),
 		},
 		{
+			label: 'Test Notification',
+			accelerator: 'ctrl+T',
+			click: () => Menus.testNotification(),
+		},
+		{
 			type: 'separator',
 		},
 		getSettingsMenu(Menus)

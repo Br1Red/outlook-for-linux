@@ -1,4 +1,4 @@
-const { app, Menu, MenuItem, clipboard, dialog, session, ipcMain } = require('electron');
+const { app, Menu, dialog, session, ipcMain, Notification } = require('electron');
 const fs = require('fs'),
 	path = require('path');
 const application = require('./application');
@@ -103,6 +103,35 @@ class Menus {
 		this.initializeEventHandlers();
 
 		this.tray = new Tray(this.window, appMenu.submenu, this.iconPath);
+	}
+
+	testNotification() {
+		this.logger.info('Testing native notification');
+
+		try {
+			const notification = new Notification({
+				title: 'Test Notification',
+				body: 'This is a test notification using native Electron Notification!',
+				icon: this.iconPath,
+				urgency: 'normal',
+			});
+
+			notification.on('click', () => {
+				this.logger.info('Notification has been clicked');
+				this.window.show();
+				this.window.focus();
+			});
+
+			notification.on('close', () => {
+				this.logger.info('Notification has been closed');
+			});
+
+			notification.show();
+			this.logger.info('Notification created successfully');
+		} catch (error) {
+			this.logger.error('Error creating notification:', error);
+			this.logger.error('Stack:', error.stack);
+		}
 	}
 
 	initializeEventHandlers() {
