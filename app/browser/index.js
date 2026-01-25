@@ -227,9 +227,10 @@ function extractEmailData(button, ariaLabel) {
 
     if (bodyElement) {
         const fullText = bodyElement.textContent;
-        
-        // Extract Email: Look for <email@address.com>
-        const emailMatch = fullText.match(/<([^>]+)>/);
+
+        // Extract Email: Use email regex pattern (handles HTML-encoded brackets)
+        const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/;
+        const emailMatch = fullText.match(emailRegex);
         if (emailMatch && emailMatch[1]) {
             senderEmail = emailMatch[1];
         }
@@ -241,12 +242,14 @@ function extractEmailData(button, ariaLabel) {
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
 
-            // Stop if we hit the Hungarian "wrote" phrase
-            if (line.includes(' ezt írta')) break;
+            // Stop at email addresses (indicates reply footer starting)
+            if (emailRegex.test(line)) break;
 
-            // Stop if we hit a line that looks like "Name <email>" (common footer in replies)
-            // We assume a footer doesn't contain a colon (like "Subject:") and ends with an email in brackets
-            if (/<[^>]+>$/.test(line) && !line.includes(':')) break;
+            // Stop at date patterns (e.g., "2026. jan. 24." or "Jan 24, 2026")
+            if (/\d{4}\./.test(line) || /\d{1,2},\s*\d{4}/.test(line)) break;
+
+            // Stop at common reply markers (lines ending with colon after name/time)
+            if (/:\s*$/.test(line) && line.length < 50) break;
 
             // Add line if it's not empty and we haven't reached 3 lines yet
             if (line && cleanLines.length < 3) {

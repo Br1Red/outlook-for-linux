@@ -122,6 +122,17 @@ function showReminderNotification(notification) {
 }
 
 /**
+ * Extract sender name from address (handles "Name" or "Name (email@domain.com)")
+ * @param {string} address
+ * @returns {string}
+ */
+function getSenderName(address) {
+    // If format is "Name (email)", extract just "Name"
+    const match = address.match(/^([^(]+)\s*\(/);
+    return match ? match[1].trim() : address;
+}
+
+/**
  * Show email notification for all current emails
  * @param {EmailNotification} notification
  */
@@ -129,16 +140,33 @@ function showEmailNotification(notification) {
     console.log('[Notification Module] showEmailNotification called:', notification);
     if (!notification) return;
 
-    // Check if same notification already exists
-    if (!emails.find(e => e.address === notification.address && e.subject === notification.subject)) {
+    // Check if same notification already exists (compare by sender name + subject)
+    const senderName = getSenderName(notification.address);
+    if (!emails.find(e => getSenderName(e.address) === senderName && e.subject === notification.subject)) {
         emails.push(notification);
     }
 
-    const body = emails.map(e => {
-        return `Sender: ${e.address}\nSubject: ${e.subject}\r\n\r\nMessage: ${e.body}`;
-    }).join('\n');
+    let title;
+    let body;
 
-    const title = emails.length === 1 ? 'New Email' : `${emails.length} New Emails`;
+    if (emails.length === 1) {
+        // Single email: show full details
+        title = 'New Email';
+        body = `From: ${emails[0].address}\nSubject: ${emails[0].subject}\n\nMessage: ${emails[0].body}`;
+    } else {
+        // Multiple emails: check if all from same sender (compare by name only)
+        const senderNames = [...new Set(emails.map(e => getSenderName(e.address)))];
+
+        if (senderNames.length === 1) {
+            // All from same sender: group by sender
+            title = `${emails.length} new emails from ${senderNames[0]}`;
+            body = emails.map(e => `• Subject: ${e.subject}`).join('\n');
+        } else {
+            // Different senders: show sender + subject (no message body)
+            title = `${emails.length} New Emails`;
+            body = emails.map(e => `${getSenderName(e.address)}\n• Subject: ${e.subject}`).join('\n\n');
+        }
+    }
 
     if (!emailNotificationHandle) {
         emailNotificationHandle = new Notification({
