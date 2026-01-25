@@ -156,9 +156,8 @@ function processNotificationElement(element, ipcRenderer) {
 	buttons.forEach(button => {
 		const ariaLabel = button.getAttribute('aria-label') || '';
 
-		// Check if this is an email notification
-		// The aria-label contains localized text like "Új üzenet tőle: Sender Name" or "New message from: Sender Name"
-		if (isEmailNotification(ariaLabel)) {
+		// Check if this is an email notification by DOM structure
+		if (isEmailNotification(button)) {
 			const emailData = extractEmailData(button, ariaLabel);
 			if (emailData) {
 				console.log('[Notification] Email notification detected:', emailData);
@@ -166,7 +165,7 @@ function processNotificationElement(element, ipcRenderer) {
 			}
 		}
 		// Check for reminder/calendar notifications
-		else if (isReminderNotification(ariaLabel)) {
+		else if (isReminderNotification(button)) {
 			const reminderData = extractReminderData(button, ariaLabel);
 			if (reminderData) {
 				console.log('[Notification] Reminder notification detected:', reminderData);
@@ -177,57 +176,33 @@ function processNotificationElement(element, ipcRenderer) {
 }
 
 /**
- * Check if aria-label indicates an email notification
- * @param {string} ariaLabel
+ * Check if button is an email notification by DOM structure
+ * Email notifications have: .ZJg8d (sender), .KTZ84 (subject), .mrxI1 (body)
+ * @param {Element} button
  * @returns {boolean}
  */
-function isEmailNotification(ariaLabel) {
-	const emailPatterns = [
-		'új üzenet',      // Hungarian
-		'new message',    // English
-		'neue nachricht', // German
-		'nuevo mensaje',  // Spanish
-		'nouveau message', // French
-		'nova mensagem',  // Portuguese
-		'nieuw bericht',  // Dutch
-		'nuovo messaggio', // Italian
-		'nowa wiadomość', // Polish
-		'ny meddelelse',  // Danish
-		'nytt meddelande', // Swedish
-		'ny melding',     // Norwegian
-		'uusi viesti',    // Finnish
-	];
+function isEmailNotification(button) {
+	// Check for email notification structure
+	const hasSender = button.querySelector('.ZJg8d');
+	const hasSubject = button.querySelector('.KTZ84');
+	const hasBody = button.querySelector('.mrxI1');
 
-	const lowerLabel = ariaLabel.toLowerCase();
-	return emailPatterns.some(pattern => lowerLabel.includes(pattern));
+	return !!(hasSender && hasSubject && hasBody);
 }
 
 /**
- * Check if aria-label indicates a reminder notification
- * @param {string} ariaLabel
+ * Check if button is a reminder notification by DOM structure
+ * This is a fallback - identifies notifications that aren't emails
+ * @param {Element} button
  * @returns {boolean}
  */
-function isReminderNotification(ariaLabel) {
-	const reminderPatterns = [
-		'emlékeztető',    // Hungarian
-		'reminder',       // English
-		'erinnerung',     // German
-		'recordatorio',   // Spanish
-		'rappel',         // French
-		'lembrete',       // Portuguese
-		'herinnering',    // Dutch
-		'promemoria',     // Italian
-		'przypomnienie',  // Polish
-		'påmindelse',     // Danish
-		'påminnelse',     // Swedish/Norwegian
-		'muistutus',      // Finnish
-		'event',
-		'calendar',
-		'meeting',
-	];
+function isReminderNotification(button) {
+	// If it has notification structure but is not an email, assume it's a reminder
+	// Reminders typically have similar structure but different content
+	const hasNotificationStructure = button.querySelector('.ZJg8d') || button.querySelector('.KTZ84');
+	const isEmail = isEmailNotification(button);
 
-	const lowerLabel = ariaLabel.toLowerCase();
-	return reminderPatterns.some(pattern => lowerLabel.includes(pattern));
+	return hasNotificationStructure && !isEmail;
 }
 
 /**

@@ -135,10 +135,24 @@ function processArgs(args) {
 }
 
 /**
- * @param {Electron.OnBeforeRequestListenerDetails} details 
- * @param {Electron.CallbackResponse} callback 
+ * @param {Electron.OnBeforeRequestListenerDetails} details
+ * @param {Electron.CallbackResponse} callback
  */
 function onBeforeRequestHandler(details, callback) {
+	// Always allow Outlook URLs to load
+	if (isOutlookWindow(details.url)) {
+		callback({});
+		return;
+	}
+
+	// Block telemetry/analytics requests (don't open in browser, just cancel)
+	if (isTelemetryUrl(details.url)) {
+		logger.debug('Blocking telemetry request: ' + details.url);
+		aboutBlankRequestCount = Math.max(0, aboutBlankRequestCount - 1); // Decrement but don't go negative
+		callback({ cancel: true });
+		return;
+	}
+
 	// Check if the counter was incremented
 	if (aboutBlankRequestCount < 1) {
 		// Proceed normally
@@ -154,16 +168,38 @@ function onBeforeRequestHandler(details, callback) {
 }
 
 /**
- * @param {Electron.HandlerDetails} details 
+ * @param {Electron.HandlerDetails} details
  * @returns {{action: 'deny'} | {action: 'allow', outlivesOpener?: boolean, overrideBrowserWindowOptions?: Electron.BrowserWindowConstructorOptions}}
  */
 function onNewWindow(details) {
 	if (details.url === 'about:blank' || details.url === 'about:blank#blocked') {
-		// Increment the counter
+		// Check if this is a compose window by looking at window features
+		const isComposeWindow = details.features && (
+			details.features.includes('width=800') ||
+			details.features.includes('resizable=1')
+		);
+
+		if (isComposeWindow) {
+			// Allow the window to open, then it will load Outlook content
+			return {
+				action: 'allow',
+				overrideBrowserWindowOptions: {
+					width: 800,
+					height: 700,
+					show: true,
+					autoHideMenuBar: true,
+					webPreferences: {
+						partition: config.partition,
+						contextIsolation: false,
+						sandbox: false
+					}
+				}
+			};
+		}
+
+		// Regular about:blank for external links
 		aboutBlankRequestCount += 1;
-
 		logger.debug('DEBUG - captured about:blank');
-
 		return { action: 'deny' };
 	}
 
@@ -182,22 +218,116 @@ function addEventHandlers() {
 	login.handleLoginDialogTry(window);
 	window.on('closed', onWindowClosed);
 	window.webContents.addListener('before-input-event', onBeforeInput);
+	window.webContents.on('context-menu', onContextMenu);
 }
 
 /**
- * @param {Electron.Event} event 
- * @param {Electron.Input} input 
+ * @param {Electron.Event} event
+ * @param {Electron.Input} input
  */
 function onBeforeInput(event, input) {
 	isControlPressed = input.control;
+
+	// Handle Ctrl+Home to go back to home page (for stuck session screens)
+	if (input.control && input.key === 'Home' && input.type === 'keyDown') {
+		logger.debug('Ctrl+Home pressed, navigating to home');
+		window.loadURL(config.url, { userAgent: config.chromeUserAgent });
+		event.preventDefault();
+	}
 }
 
 /**
- * @param {Electron.HandlerDetails} details 
+ * Handle context menu (right-click)
+ * @param {Electron.Event} event
+ * @param {Electron.ContextMenuParams} params
+ */
+function onContextMenu(event, params) {
+	const { Menu, MenuItem } = require('electron');
+	const menu = new Menu();
+
+	// Add "Reload" option
+	menu.append(new MenuItem({
+		label: 'Reload Page',
+		accelerator: 'Ctrl+R',
+		click: () => {
+			window.reload();
+		}
+	}));
+
+	// Add "Go to Home" option
+	menu.append(new MenuItem({
+		label: 'Go to Home',
+		accelerator: 'Ctrl+Home',
+		click: () => {
+			window.loadURL(config.url, { userAgent: config.chromeUserAgent });
+		}
+	}));
+
+	menu.append(new MenuItem({ type: 'separator' }));
+
+	// Standard context menu items (if text is selected or in an input field)
+	if (params.isEditable || params.selectionText) {
+		if (params.misspelledWord) {
+			menu.append(new MenuItem({
+				label: 'Add to Dictionary',
+				click: () => {
+					window.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord);
+				}
+			}));
+			menu.append(new MenuItem({ type: 'separator' }));
+		}
+
+		if (params.isEditable) {
+			menu.append(new MenuItem({ label: 'Cut', role: 'cut' }));
+			menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+			menu.append(new MenuItem({ label: 'Paste', role: 'paste' }));
+		} else if (params.selectionText) {
+			menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+		}
+
+		menu.append(new MenuItem({ type: 'separator' }));
+	}
+
+	// Add "Inspect Element" for debugging
+	if (config.webDebug) {
+		menu.append(new MenuItem({
+			label: 'Inspect Element',
+			click: () => {
+				window.webContents.inspectElement(params.x, params.y);
+			}
+		}));
+	}
+
+	menu.popup({ window });
+}
+
+/**
+ * @param {Electron.HandlerDetails} details
  * @returns {{action: 'deny'} | {action: 'allow', outlivesOpener?: boolean, overrideBrowserWindowOptions?: Electron.BrowserWindowConstructorOptions}}
  */
 function secureOpenLink(details) {
 	logger.debug(`Requesting to open '${details.url}'`);
+
+	// Allow Outlook compose/mail windows to open in Electron automatically
+	if (isOutlookWindow(details.url)) {
+		logger.debug('Outlook window detected, allowing in Electron');
+		removePopupWindowMenu();
+		return {
+			action: 'allow',
+			overrideBrowserWindowOptions: {
+				width: 1000,
+				height: 800,
+				show: true,
+				autoHideMenuBar: true,
+				webPreferences: {
+					partition: config.partition,
+					contextIsolation: false,
+					sandbox: false
+				}
+			}
+		};
+	}
+
 	const action = getLinkAction();
 
 	if (action === 0) {
@@ -221,6 +351,60 @@ function secureOpenLink(details) {
 	}
 
 	return returnValue;
+}
+
+/**
+ * Check if URL is an Outlook window that should open in Electron
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isOutlookWindow(url) {
+	// Allow Outlook domains to open in Electron
+	const outlookDomains = [
+		'outlook.office.com',
+		'outlook.office365.com',
+		'outlook.live.com',
+		'res.public.onecdn.static.microsoft',
+		'addin.insights.static.microsoft',
+		'substrate.office.com',
+	];
+
+	const urlLower = url.toLowerCase();
+
+	// Check if URL contains any Outlook domain
+	if (outlookDomains.some(domain => urlLower.includes(domain))) {
+		return true;
+	}
+
+	// Also check for specific Outlook paths
+	const outlookPatterns = [
+		'/mail/deeplink/compose',
+		'/mail/0/deeplink/compose',
+		'/calendar/deeplink',
+		'/mail/inbox/id/',
+		'/mail/sentitems/id/',
+	];
+
+	return outlookPatterns.some(pattern => urlLower.includes(pattern));
+}
+
+/**
+ * Check if URL is a telemetry/analytics request that should be blocked
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isTelemetryUrl(url) {
+	const telemetryPatterns = [
+		'events.data.microsoft.com',
+		'telemetry',
+		'analytics',
+		'collector',
+		'/api/v2/track',
+		'/collect',
+	];
+
+	const urlLower = url.toLowerCase();
+	return telemetryPatterns.some(pattern => urlLower.includes(pattern));
 }
 
 function openInBrowser(details) {
