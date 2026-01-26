@@ -40,17 +40,26 @@ class ApplicationTray {
 								// Draw base icon
 								ctx.drawImage(image, 0, 0, 140, 140);
 
-								// Draw red badge circle
-								ctx.fillStyle = 'red';
+								// Draw red badge circle (bigger size, repositioned to fit)
+								ctx.fillStyle = '#FF0000';
 								ctx.beginPath();
-								ctx.ellipse(105, 35, 35, 35, 35, 0, 2 * Math.PI);
+								ctx.arc(95, 50, 45, 0, 2 * Math.PI);
 								ctx.fill();
 
+								// Add white border for better visibility
+								ctx.strokeStyle = 'white';
+								ctx.lineWidth = 3;
+								ctx.stroke();
+
 								// Draw count text
+								const displayText = ${count} > 9 ? '9+' : '${count}';
+								const fontSize = ${count} > 9 ? 58 : 70;
+
 								ctx.textAlign = 'center';
+								ctx.textBaseline = 'middle';
 								ctx.fillStyle = 'white';
-								ctx.font = 'bold 70px "Segoe UI","Helvetica Neue",Helvetica,Arial,sans-serif';
-								ctx.fillText(${count} > 9 ? '9+' : '${count}', 105, 60);
+								ctx.font = \`bold \${fontSize}px Arial\`;
+								ctx.fillText(displayText, 95, 50);
 
 								resolve(canvas.toDataURL());
 							};
