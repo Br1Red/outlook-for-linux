@@ -15,6 +15,10 @@ console.log('[Preload] Script starting...');
 			console.log('[Preload] Calling initNotificationInterception...');
 			initNotificationInterception(ipcRenderer);
 			console.log('[Preload] initNotificationInterception called');
+
+			// Setup unread count observer
+			console.log('[Preload] Setting up unread count observer...');
+			setupUnreadCountObserver(ipcRenderer);
 		}
 
 		// Initialize other modules (wrapped in try-catch as they have issues)
@@ -302,6 +306,115 @@ function extractReminderData(button, ariaLabel) {
 		text: text || 'Reminder',
 		time: time
 	};
+}
+
+/**
+ * Setup observer to watch Outlook's unread email counter
+ * @param {Electron.IpcRenderer} ipcRenderer
+ */
+function setupUnreadCountObserver(ipcRenderer) {
+
+    try {
+        let debounceTimer;
+        const debouncedCheck = () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(checkUnreadCount, 100);
+        };
+
+        const checkUnreadCount = () => {
+            try {
+                const unreadElements = document.querySelectorAll('.WIYG1.Mt2TB');
+                let totalCount = 0;
+                unreadElements.forEach(element => {
+                    if (element.closest('[aria-labelledby="favoritesRoot"]')) {
+                        return;
+                    }
+                    const count = parseInt(element.textContent) || 0;
+                    totalCount += count;
+                });
+
+                console.log('[Unread Counter] Total unread count:', totalCount);
+                
+                if (ipcRenderer && ipcRenderer.invoke) {
+                    ipcRenderer.invoke('updateUnreadCount', totalCount);
+                }
+            } catch (e) {
+                console.error('[Unread Counter] ERROR in checkUnreadCount:', e);
+            }
+        };
+
+        const observer = new MutationObserver((mutations) => {
+            try {
+                let relevantMutation = false;
+                for (const mutation of mutations) {
+                    // Check added nodes
+                    if (mutation.addedNodes) {
+                        mutation.addedNodes.forEach(node => {
+                            // Ensure node is an element before accessing classList/querySelector
+                            if (node.nodeType === 1) { 
+                                if (node.classList?.contains('WIYG1') || (node.querySelector && node.querySelector('.WIYG1.Mt2TB'))) {
+                                    relevantMutation = true;
+                                }
+                            }
+                        });
+                    }
+
+                    // Check removed nodes
+                    if (mutation.removedNodes) {
+                        mutation.removedNodes.forEach(node => {
+                            if (node.nodeType === 1) {
+                                if (node.classList?.contains('WIYG1') || (node.querySelector && node.querySelector('.WIYG1.Mt2TB'))) {
+                                    relevantMutation = true;
+                                }
+                            }
+                        });
+                    }
+
+                    if (mutation.type === 'characterData' && mutation.target.parentElement?.classList.contains('WIYG1')) {
+                        relevantMutation = true;
+                    }
+                }
+
+                if (relevantMutation) {
+                    debouncedCheck();
+                }
+            } catch (e) {
+                console.error('[Unread Counter] ERROR inside Observer callback:', e);
+            }
+        });
+
+        // Defensive check: Does html element exist?
+        const targetNode = document.documentElement || document;
+        observer.observe(targetNode, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+        
+        let attempts = 0;
+        const maxAttempts = 20;
+
+        const pollForElements = () => {
+            console.log(`[Unread Counter] Polling attempt ${attempts + 1}...`);
+            
+            const unreadElements = document.querySelectorAll('.WIYG1.Mt2TB');
+
+            if (unreadElements.length > 0) {
+                console.log('[Unread Counter] Elements found!');
+                checkUnreadCount();
+            } else if (attempts < maxAttempts) {
+                attempts++;
+                setTimeout(pollForElements, 500); 
+            } else {
+                console.log('[Unread Counter] Polling timeout reached.');
+            }
+        };
+
+        setTimeout(pollForElements, 1000);
+
+    } catch (e) {
+        console.error('[Unread Counter] CRITICAL ERROR during setup:', e);
+    }
 }
 
 /**

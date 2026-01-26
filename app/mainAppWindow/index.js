@@ -45,10 +45,11 @@ exports.onAppReady = async function onAppReady(mainConfig) {
 
 	window = await createWindow();
 
-	// Initialize notification module with window and icon
-	notificationModule.init(window, iconChooser.getFile());
+	const menus = new Menus(window, config, iconChooser.getFile());
 
-	new Menus(window, config, iconChooser.getFile());
+	// Initialize notification module with window, icon, and menus (for badge updates)
+	notificationModule.init(window, iconChooser.getFile(), menus);
+
 	addEventHandlers();
 
 	const url = processArgs(process.argv);

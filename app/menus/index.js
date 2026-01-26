@@ -102,7 +102,17 @@ class Menus {
 
 		this.initializeEventHandlers();
 
-		this.tray = new Tray(this.window, appMenu.submenu, this.iconPath);
+		this.tray = new Tray(this.window, appMenu.submenu, this.iconPath, this.config);
+	}
+
+	/**
+	 * Update the tray icon badge count
+	 * @param {number} count - Number of unread items
+	 */
+	updateTrayBadge(count) {
+		if (this.tray) {
+			this.tray.updateBadge(count);
+		}
 	}
 
 	testNotification() {

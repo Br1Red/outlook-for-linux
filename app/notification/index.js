@@ -1,4 +1,4 @@
-const { Notification, BrowserWindow } = require('electron');
+const { Notification, BrowserWindow, app } = require('electron');
 const path = require('path');
 
 /**
@@ -19,17 +19,32 @@ let reminderNotificationHandle = null;
 let emailNotificationHandle = null;
 let mainWindow = null;
 let iconPath = null;
+let menusInstance = null;
 
 /**
  * Initialize the notification module
  * @param {BrowserWindow} window - The main application window
  * @param {string} icon - Path to the notification icon
+ * @param {object} menus - The Menus instance for updating tray badge
  */
-function init(window, icon) {
+function init(window, icon, menus) {
 	mainWindow = window;
 	iconPath = icon;
+	menusInstance = menus;
 	console.log('[Notification Module] Initialized with icon:', icon);
 	console.log('[Notification Module] Notification.isSupported():', Notification.isSupported());
+}
+
+/**
+ * Update badge based on Outlook's unread count
+ * @param {number} count - Unread email count from Outlook
+ */
+function updateBadgeFromUnreadCount(count) {
+	app.setBadgeCount(count);
+	if (menusInstance) {
+		menusInstance.updateTrayBadge(count);
+	}
+	console.log('[Notification Module] Badge updated from unread count:', count);
 }
 
 /**
@@ -38,6 +53,7 @@ function init(window, icon) {
 function reset() {
 	reminders = [];
 	emails = [];
+	// Badge is now updated by Outlook's unread count
 	if (reminderNotificationHandle) {
 		reminderNotificationHandle.close();
 		reminderNotificationHandle = null;
@@ -177,7 +193,6 @@ function showEmailNotification(notification) {
         });
 
         emailNotificationHandle.on('click', () => {
-            emails = [];
             if (mainWindow) {
                 mainWindow.show();
                 mainWindow.focus();
@@ -186,11 +201,15 @@ function showEmailNotification(notification) {
                 emailNotificationHandle.close();
                 emailNotificationHandle = null;
             }
+            // Clear notification tracking but don't update badge
+            // (badge is now controlled by Outlook's unread count)
+            emails = [];
         });
 
         emailNotificationHandle.on('close', () => {
-            emails = [];
             emailNotificationHandle = null;
+            // Clear notification tracking but don't update badge
+            emails = [];
         });
     } else {
         // Update existing notification - need to recreate since Electron doesn't support updating
@@ -203,7 +222,6 @@ function showEmailNotification(notification) {
         });
 
         emailNotificationHandle.on('click', () => {
-            emails = [];
             if (mainWindow) {
                 mainWindow.show();
                 mainWindow.focus();
@@ -212,21 +230,27 @@ function showEmailNotification(notification) {
                 emailNotificationHandle.close();
                 emailNotificationHandle = null;
             }
+            // Clear notification tracking but don't update badge
+            // (badge is now controlled by Outlook's unread count)
+            emails = [];
         });
 
         emailNotificationHandle.on('close', () => {
-            emails = [];
             emailNotificationHandle = null;
+            // Clear notification tracking but don't update badge
+            emails = [];
         });
     }
 
     console.log('[Notification Module] Showing email notification...');
     emailNotificationHandle.show();
+    // Badge is now updated by Outlook's unread count, not notification count
 }
 
 module.exports = {
 	init,
 	reset,
 	showReminderNotification,
-	showEmailNotification
+	showEmailNotification,
+	updateBadgeFromUnreadCount
 };

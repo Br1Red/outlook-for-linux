@@ -79,6 +79,7 @@ if (!gotTheLock) {
 	ipcMain.handle('set-badge-count', setBadgeCountHandler);
 	ipcMain.handle('showEmailNotification', handleShowEmailNotification);
 	ipcMain.handle('showReminderNotification', handleShowReminderNotification);
+	ipcMain.handle('updateUnreadCount', handleUpdateUnreadCount);
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -210,4 +211,15 @@ async function handleShowEmailNotification(event, notification) {
 async function handleShowReminderNotification(event, notification) {
 	console.log(`[Main] Reminder notification: ${notification.text} (${notification.time})`);
 	notificationModule.showReminderNotification(notification);
+}
+
+/**
+ * Handle unread count update from preload script
+ *
+ * @param {*} event
+ * @param {number} count
+ */
+async function handleUpdateUnreadCount(event, count) {
+	console.log(`[Main] Unread count updated: ${count}`);
+	notificationModule.updateBadgeFromUnreadCount(count);
 }
