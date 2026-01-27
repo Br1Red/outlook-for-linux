@@ -45,7 +45,7 @@ exports.onAppReady = async function onAppReady(mainConfig) {
 
 	window = await createWindow();
 
-	const menus = new Menus(window, config, iconChooser.getFile());
+	const menus = new Menus(window, config, iconChooser.getFile(), mainConfig);
 
 	// Initialize notification module with window, icon, and menus (for badge updates)
 	notificationModule.init(window, iconChooser.getFile(), menus);

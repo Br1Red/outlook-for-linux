@@ -9,15 +9,19 @@ const { LucidLog } = require('lucid-log');
 const connectionManager = require('../connectionManager');
 
 class Menus {
-	constructor(window, config, iconPath) {
+	constructor(window, config, iconPath, appConfig) {
 		/**
 		 * @type {Electron.BrowserWindow}
 		 */
 		this.window = window;
 		this.iconPath = iconPath;
 		this.config = config;
+		this.appConfig = appConfig;
 		this.allowQuit = false;
-		this.notificationAutoDismiss = false;
+		// Load saved notification auto-dismiss setting from persistent store
+		this.notificationAutoDismiss = appConfig && appConfig.settingsStore
+			? appConfig.settingsStore.get('notificationAutoDismiss', false)
+			: false;
 		this.logger = new LucidLog({
 			levels: config.appLogLevels.split(',')
 		});
@@ -149,6 +153,11 @@ class Menus {
 	toggleNotificationAutoDismiss(enabled) {
 		this.notificationAutoDismiss = enabled;
 		this.logger.info('Notification auto-dismiss:', enabled ? 'enabled' : 'disabled');
+
+		// Save to persistent store
+		if (this.appConfig && this.appConfig.settingsStore) {
+			this.appConfig.settingsStore.set('notificationAutoDismiss', enabled);
+		}
 
 		// Rebuild tray menu to update checkbox state
 		const appMenu = application(this);
