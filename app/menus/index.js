@@ -17,6 +17,7 @@ class Menus {
 		this.iconPath = iconPath;
 		this.config = config;
 		this.allowQuit = false;
+		this.notificationAutoDismiss = false;
 		this.logger = new LucidLog({
 			levels: config.appLogLevels.split(',')
 		});
@@ -143,6 +144,15 @@ class Menus {
 			this.logger.error('Error creating notification:', error);
 			this.logger.error('Stack:', error.stack);
 		}
+	}
+
+	toggleNotificationAutoDismiss(enabled) {
+		this.notificationAutoDismiss = enabled;
+		this.logger.info('Notification auto-dismiss:', enabled ? 'enabled' : 'disabled');
+
+		// Rebuild tray menu to update checkbox state
+		const appMenu = application(this);
+		this.tray.tray.setContextMenu(Menu.buildFromTemplate(appMenu.submenu));
 	}
 
 	initializeEventHandlers() {

@@ -182,14 +182,17 @@ function showReminderNotification(notification) {
 		});
 
 		reminderNotificationHandle.on('click', () => {
-			reminders = [];
 			if (mainWindow) {
 				mainWindow.show();
 				mainWindow.focus();
 			}
-			if (reminderNotificationHandle) {
-				reminderNotificationHandle.close();
-				reminderNotificationHandle = null;
+			// Auto-dismiss if setting is enabled
+			if (menusInstance && menusInstance.notificationAutoDismiss) {
+				reminders = [];
+				if (reminderNotificationHandle) {
+					reminderNotificationHandle.close();
+					reminderNotificationHandle = null;
+				}
 			}
 		});
 
@@ -208,14 +211,17 @@ function showReminderNotification(notification) {
 		});
 
 		reminderNotificationHandle.on('click', () => {
-			reminders = [];
 			if (mainWindow) {
 				mainWindow.show();
 				mainWindow.focus();
 			}
-			if (reminderNotificationHandle) {
-				reminderNotificationHandle.close();
-				reminderNotificationHandle = null;
+			// Auto-dismiss if setting is enabled
+			if (menusInstance && menusInstance.notificationAutoDismiss) {
+				reminders = [];
+				if (reminderNotificationHandle) {
+					reminderNotificationHandle.close();
+					reminderNotificationHandle = null;
+				}
 			}
 		});
 
@@ -288,13 +294,16 @@ function showEmailNotification(notification) {
                 mainWindow.show();
                 mainWindow.focus();
             }
-            if (emailNotificationHandle) {
-                emailNotificationHandle.close();
-                emailNotificationHandle = null;
+            // Auto-dismiss if setting is enabled
+            if (menusInstance && menusInstance.notificationAutoDismiss) {
+                if (emailNotificationHandle) {
+                    emailNotificationHandle.close();
+                    emailNotificationHandle = null;
+                }
+                // Clear notification tracking but don't update badge
+                // (badge is now controlled by Outlook's unread count)
+                emails = [];
             }
-            // Clear notification tracking but don't update badge
-            // (badge is now controlled by Outlook's unread count)
-            emails = [];
         });
 
         emailNotificationHandle.on('close', () => {
@@ -317,13 +326,16 @@ function showEmailNotification(notification) {
                 mainWindow.show();
                 mainWindow.focus();
             }
-            if (emailNotificationHandle) {
-                emailNotificationHandle.close();
-                emailNotificationHandle = null;
+            // Auto-dismiss if setting is enabled
+            if (menusInstance && menusInstance.notificationAutoDismiss) {
+                if (emailNotificationHandle) {
+                    emailNotificationHandle.close();
+                    emailNotificationHandle = null;
+                }
+                // Clear notification tracking but don't update badge
+                // (badge is now controlled by Outlook's unread count)
+                emails = [];
             }
-            // Clear notification tracking but don't update badge
-            // (badge is now controlled by Outlook's unread count)
-            emails = [];
         });
 
         emailNotificationHandle.on('close', () => {

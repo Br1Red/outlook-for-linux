@@ -36,6 +36,10 @@ exports = module.exports = (Menus) => ({
 		{
 			type: 'separator',
 		},
+		getNotificationsMenu(Menus),
+		{
+			type: 'separator',
+		},
 		getSettingsMenu(Menus)
 		,
 		{
@@ -56,6 +60,20 @@ function getSettingsMenu(Menus) {
 			{
 				label: 'Restore',
 				click: () => Menus.restoreSettings()
+			}
+		]
+	};
+}
+
+function getNotificationsMenu(Menus) {
+	return {
+		label: 'Notifications',
+		submenu: [
+			{
+				label: 'Auto-dismiss on click',
+				type: 'checkbox',
+				checked: Menus.notificationAutoDismiss || false,
+				click: (menuItem) => Menus.toggleNotificationAutoDismiss(menuItem.checked)
 			}
 		]
 	};
