@@ -8,28 +8,21 @@ PRs and suggestions are welcomed. We will continue to support the community.
 
 ---
 
-[//]: # ([![Gitter chat]&#40;https://badges.gitter.im/ismaelmartinez/outlook-for-linux.png&#41;]&#40;https://gitter.im/outlook-for-linux/community "Gitter chat"&#41;)
-![](https://img.shields.io/github/release/mahmoudbahaa/outlook-for-linux.svg?style=flat)
-![](https://img.shields.io/github/downloads/mahmoudbahaa/outlook-for-linux/total.svg?style=flat)
-![Build & Release](https://github.com/mahmoudbahaa/outlook-for-linux/workflows/Build%20&%20Release/badge.svg)
-
-[//]: # (![]&#40;https://img.shields.io/librariesio/github/mahmoudbahaa/outlook-for-linux&#41;)
-[![Known Vulnerabilities](https://snyk.io//test/github/mahmoudbahaa/outlook-for-linux/badge.svg?targetFile=package.json)](https://snyk.io//test/github/mahmoudbahaa/outlook-for-linux?targetFile=package.json)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/826059bbf59d45148c46e440579fc221)](https://app.codacy.com/gh/mahmoudbahaa/outlook-for-linux/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
-[![outlook-for-linux](https://snapcraft.io/outlook-for-linux/badge.svg)](https://snapcraft.io/outlook-for-linux)
-
 Unofficial Microsoft Outlook client for Linux using [`Electron`](https://electronjs.org/).
 It uses the Web App and wraps it as a standalone application using Electron.
 
 A clone of https://github.com/IsmaelMartinez/teams-for-linux but for outlook
 
+# IMPORTANT
+
+Notification for new emails -- You have to set the notification style to alert which is gonna display at almost in the upper right corner.
+<p><img width="207" height="135" alt="image" src="https://github.com/user-attachments/assets/121e60ac-9e4a-47a8-a6b2-e2896f515567" /><p></p>
+
 ## Downloads
 
-Binaries available under [releases](https://github.com/mahmoudbahaa/outlook-for-linux/releases) for `AppImage`, `rpm`, `deb`, `snap`, and `tar.gz`.
+Binaries available under [releases](https://github.com/peter1599/outlook-for-linux/releases) for `AppImage`.
 
 In the case of `AppImage`, we recommend using [`AppImageLauncher`](https://github.com/TheAssassin/AppImageLauncher) for the best desktop experience.
-
-[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/outlook-for-linux)
 
 ## Starting arguments
 
