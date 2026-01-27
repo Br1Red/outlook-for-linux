@@ -217,20 +217,25 @@ function convertMailtoToOutlookURL(mailtoUrl) {
 			outlookUrl += `to=${encodeURIComponent(recipient)}`;
 		}
 
-		// Add other parameters (subject, body, cc, bcc)
+		// Add other parameters
+		// NOTE: Outlook uses ? for cc/bcc and & for subject/body (weird format)
 		if (queryString) {
 			const params = new URLSearchParams(queryString);
+
+			// cc and bcc use ? separator
+			if (params.has('cc')) {
+				outlookUrl += `?cc=${params.get('cc')}`;
+			}
+			if (params.has('bcc')) {
+				outlookUrl += `?bcc=${params.get('bcc')}`;
+			}
+
+			// subject and body use & separator
 			if (params.has('subject')) {
 				outlookUrl += `&subject=${encodeURIComponent(params.get('subject'))}`;
 			}
 			if (params.has('body')) {
 				outlookUrl += `&body=${encodeURIComponent(params.get('body'))}`;
-			}
-			if (params.has('cc')) {
-				outlookUrl += `&cc=${encodeURIComponent(params.get('cc'))}`;
-			}
-			if (params.has('bcc')) {
-				outlookUrl += `&bcc=${encodeURIComponent(params.get('bcc'))}`;
 			}
 		}
 
