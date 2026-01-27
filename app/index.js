@@ -80,6 +80,7 @@ if (!gotTheLock) {
 	ipcMain.handle('showEmailNotification', handleShowEmailNotification);
 	ipcMain.handle('showReminderNotification', handleShowReminderNotification);
 	ipcMain.handle('updateUnreadCount', handleUpdateUnreadCount);
+	ipcMain.handle('updateReminderCount', handleUpdateReminderCount);
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -222,4 +223,15 @@ async function handleShowReminderNotification(event, notification) {
 async function handleUpdateUnreadCount(event, count) {
 	console.log(`[Main] Unread count updated: ${count}`);
 	notificationModule.updateBadgeFromUnreadCount(count);
+}
+
+/**
+ * @param {*} event
+ * @param {number} count
+ */
+async function handleUpdateReminderCount(event, count) {
+	console.log(`[Main] Reminder count updated: ${count}`);
+	console.log('[Main] Calling notificationModule.updateBadgeFromReminderCount...');
+	notificationModule.updateBadgeFromReminderCount(count);
+	console.log('[Main] Called notificationModule.updateBadgeFromReminderCount');
 }

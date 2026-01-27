@@ -3,8 +3,11 @@ const path = require('path');
 
 /**
  * @typedef {Object} ReminderNotification
- * @property {string} time
- * @property {string} text
+ * @property {string} subject
+ * @property {string} [location]
+ * @property {string} timeUntil
+ * @property {string} [startTime]
+ * @property {string} [reminderType]
  */
 
 /**
@@ -20,6 +23,11 @@ let emailNotificationHandle = null;
 let mainWindow = null;
 let iconPath = null;
 let menusInstance = null;
+
+// Badge count tracking
+let currentEmailCount = 0;
+let currentReminderCount = 0;
+let alternatingInterval = null;
 
 /**
  * Initialize the notification module
@@ -40,11 +48,76 @@ function init(window, icon, menus) {
  * @param {number} count - Unread email count from Outlook
  */
 function updateBadgeFromUnreadCount(count) {
+	console.log('[Notification Module] updateBadgeFromUnreadCount called with count:', count);
+	currentEmailCount = count;
+	updateAlternatingBadge();
+}
+
+/**
+ * Update badge based on active reminder count
+ * @param {number} count - Active reminder count
+ */
+function updateBadgeFromReminderCount(count) {
+	console.log('[Notification Module] updateBadgeFromReminderCount called with count:', count);
+	currentReminderCount = count;
+	updateAlternatingBadge();
+}
+
+/**
+ * Update badge with alternating logic
+ */
+function updateAlternatingBadge() {
+	console.log('[Notification Module] updateAlternatingBadge called - emails:', currentEmailCount, 'reminders:', currentReminderCount);
+
+	// Stop any existing alternating interval
+	if (alternatingInterval) {
+		clearInterval(alternatingInterval);
+		alternatingInterval = null;
+	}
+
+	// If both counts exist, alternate between them
+	if (currentEmailCount > 0 && currentReminderCount > 0) {
+		console.log('[Notification Module] Both counts > 0, starting alternation');
+		let showEmail = true;
+
+		// Initial display
+		updateTrayBadge(showEmail ? currentEmailCount : currentReminderCount, showEmail ? 'email' : 'reminder');
+
+		// Alternate every 3 seconds
+		alternatingInterval = setInterval(() => {
+			showEmail = !showEmail;
+			console.log('[Notification Module] Alternating to:', showEmail ? 'email' : 'reminder');
+			updateTrayBadge(showEmail ? currentEmailCount : currentReminderCount, showEmail ? 'email' : 'reminder');
+		}, 3000);
+	}
+	// Only emails
+	else if (currentEmailCount > 0) {
+		console.log('[Notification Module] Only emails, showing email badge');
+		updateTrayBadge(currentEmailCount, 'email');
+	}
+	// Only reminders
+	else if (currentReminderCount > 0) {
+		console.log('[Notification Module] Only reminders, showing reminder badge');
+		updateTrayBadge(currentReminderCount, 'reminder');
+	}
+	// No badges
+	else {
+		console.log('[Notification Module] No badges to show');
+		updateTrayBadge(0, 'email');
+	}
+}
+
+/**
+ * Update tray badge with count and type
+ * @param {number} count
+ * @param {string} type - 'email' or 'reminder'
+ */
+function updateTrayBadge(count, type) {
+	console.log('[Notification Module] updateTrayBadge called - count:', count, 'type:', type);
 	app.setBadgeCount(count);
 	if (menusInstance) {
-		menusInstance.updateTrayBadge(count);
+		menusInstance.updateTrayBadge(count, type);
 	}
-	console.log('[Notification Module] Badge updated from unread count:', count);
 }
 
 /**
@@ -72,15 +145,33 @@ function showReminderNotification(notification) {
 	if (!notification) return;
 
 	// Check if same notification already exists
-	if (!reminders.find(r => r.text === notification.text && r.time === notification.time)) {
+	if (!reminders.find(r => r.subject === notification.subject && r.timeUntil === notification.timeUntil)) {
 		reminders.push(notification);
 	}
 
-	const body = reminders.map(r => {
-		return `${r.text} (${r.time})`;
-	}).join('\n');
+	let title;
+	let body;
 
-	const title = reminders.length === 1 ? 'New Reminder' : `${reminders.length} New Reminders`;
+	if (reminders.length === 1) {
+		// Single reminder: show detailed info
+		const r = reminders[0];
+		title = `${r.reminderType || 'Reminder'}: ${r.subject}`;
+
+		const details = [];
+		if (r.timeUntil) details.push(`Time: ${r.timeUntil}`);
+		if (r.startTime) details.push(`Start: ${r.startTime}`);
+		if (r.location) details.push(`Location: ${r.location}`);
+
+		body = details.join('\n');
+	} else {
+		// Multiple reminders: show list
+		title = `${reminders.length} New Reminders`;
+		body = reminders.map(r => {
+			let line = `• ${r.subject}`;
+			if (r.timeUntil) line += ` (${r.timeUntil})`;
+			return line;
+		}).join('\n');
+	}
 
 	if (!reminderNotificationHandle) {
 		reminderNotificationHandle = new Notification({
@@ -252,5 +343,6 @@ module.exports = {
 	reset,
 	showReminderNotification,
 	showEmailNotification,
-	updateBadgeFromUnreadCount
+	updateBadgeFromUnreadCount,
+	updateBadgeFromReminderCount
 };

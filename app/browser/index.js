@@ -19,6 +19,10 @@ console.log('[Preload] Script starting...');
 			// Setup unread count observer
 			console.log('[Preload] Setting up unread count observer...');
 			setupUnreadCountObserver(ipcRenderer);
+
+			// Setup reminder count observer
+			console.log('[Preload] Setting up reminder count observer...');
+			setupReminderCountObserver(ipcRenderer);
 		}
 
 		// Initialize other modules (wrapped in try-catch as they have issues)
@@ -147,33 +151,41 @@ function observeNotificationPane(notificationPane, ipcRenderer) {
  * @param {Electron.IpcRenderer} ipcRenderer
  */
 function processNotificationElement(element, ipcRenderer) {
-	// Look for notification buttons inside the element or check if element itself is one
-	const buttons = element.querySelectorAll ?
-		[...element.querySelectorAll('button[aria-label]'), ...(element.matches?.('button[aria-label]') ? [element] : [])] :
-		[];
+	// 1. Check for reminder notifications (divs with timeuntildisplaystring attribute)
+	const reminderDivs = element.querySelectorAll ?
+		[...element.querySelectorAll('[timeuntildisplaystring]')] : [];
+
+	// Also check if the element itself has the attribute
+	if (element.hasAttribute && element.hasAttribute('timeuntildisplaystring')) {
+		reminderDivs.push(element);
+	}
+
+	reminderDivs.forEach(reminderDiv => {
+		const reminderData = extractReminderData(reminderDiv);
+		if (reminderData) {
+			console.log('[Notification] Reminder notification detected:', reminderData);
+			ipcRenderer.invoke('showReminderNotification', reminderData);
+		}
+	});
+
+	// 2. Check for email notifications (buttons with aria-label)
+	const emailButtons = element.querySelectorAll ?
+		[...element.querySelectorAll('button[aria-label]'),
+		 ...(element.matches?.('button[aria-label]') ? [element] : [])] : [];
 
 	// Also check the element itself if it's a button
 	if (element.tagName === 'BUTTON' && element.hasAttribute('aria-label')) {
-		buttons.push(element);
+		emailButtons.push(element);
 	}
 
-	buttons.forEach(button => {
-		const ariaLabel = button.getAttribute('aria-label') || '';
-
+	emailButtons.forEach(button => {
 		// Check if this is an email notification by DOM structure
 		if (isEmailNotification(button)) {
+			const ariaLabel = button.getAttribute('aria-label') || '';
 			const emailData = extractEmailData(button, ariaLabel);
 			if (emailData) {
 				console.log('[Notification] Email notification detected:', emailData);
 				ipcRenderer.invoke('showEmailNotification', emailData);
-			}
-		}
-		// Check for reminder/calendar notifications
-		else if (isReminderNotification(button)) {
-			const reminderData = extractReminderData(button, ariaLabel);
-			if (reminderData) {
-				console.log('[Notification] Reminder notification detected:', reminderData);
-				ipcRenderer.invoke('showReminderNotification', reminderData);
 			}
 		}
 	});
@@ -192,21 +204,6 @@ function isEmailNotification(button) {
 	const hasBody = button.querySelector('.mrxI1');
 
 	return !!(hasSender && hasSubject && hasBody);
-}
-
-/**
- * Check if button is a reminder notification by DOM structure
- * This is a fallback - identifies notifications that aren't emails
- * @param {Element} button
- * @returns {boolean}
- */
-function isReminderNotification(button) {
-	// If it has notification structure but is not an email, assume it's a reminder
-	// Reminders typically have similar structure but different content
-	const hasNotificationStructure = button.querySelector('.ZJg8d') || button.querySelector('.KTZ84');
-	const isEmail = isEmailNotification(button);
-
-	return hasNotificationStructure && !isEmail;
 }
 
 /**
@@ -288,24 +285,30 @@ function extractEmailData(button, ariaLabel) {
 }
 
 /**
- * Extract reminder data from notification button
- * @param {Element} button
- * @param {string} ariaLabel
- * @returns {{text: string, time: string} | null}
+ * Extract reminder data from reminder div element using DOM attributes
+ * @param {Element} element - Element with timeuntildisplaystring attribute
+ * @returns {{subject: string, location: string, timeUntil: string, startTime: string, reminderType: string} | null}
  */
-function extractReminderData(button, ariaLabel) {
-	// Try to get reminder text from the DOM
-	const textElement = button.querySelector('.KTZ84') || button.querySelector('.ZJg8d > div:first-child');
-	const text = textElement?.textContent?.trim() || ariaLabel;
+function extractReminderData(element) {
+	// Extract attributes directly from the element
+	const subject = element.getAttribute('subject') || '';
+	const location = element.getAttribute('location') || '';
+	const timeUntil = element.getAttribute('timeuntildisplaystring') || '';
+	const startTime = element.getAttribute('starttimedisplaystring') || '';
+	const reminderType = element.getAttribute('remindertype') || 'Reminder';
 
-	// Try to find time element
-	const timeElement = button.querySelector('[class*="time"]');
-	const time = timeElement?.textContent?.trim() || 'Now';
+	// Return data if subject exists
+	if (subject) {
+		return {
+			subject: subject,
+			location: location,
+			timeUntil: timeUntil,
+			startTime: startTime,
+			reminderType: reminderType
+		};
+	}
 
-	return {
-		text: text || 'Reminder',
-		time: time
-	};
+	return null;
 }
 
 /**
@@ -414,6 +417,86 @@ function setupUnreadCountObserver(ipcRenderer) {
 
     } catch (e) {
         console.error('[Unread Counter] CRITICAL ERROR during setup:', e);
+    }
+}
+
+/**
+ * Setup observer to watch for active reminders
+ * @param {Electron.IpcRenderer} ipcRenderer
+ */
+function setupReminderCountObserver(ipcRenderer) {
+    try {
+        let debounceTimer;
+        const debouncedCheck = () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(checkReminderCount, 100);
+        };
+
+        const checkReminderCount = () => {
+            try {
+                // Count elements with timeuntildisplaystring attribute (active reminders)
+                const reminderElements = document.querySelectorAll('[timeuntildisplaystring]');
+                const totalCount = reminderElements.length;
+
+                console.log('[Reminder Counter] Total reminder count:', totalCount);
+
+                if (ipcRenderer && ipcRenderer.invoke) {
+                    console.log('[Reminder Counter] Invoking updateReminderCount with count:', totalCount);
+                    ipcRenderer.invoke('updateReminderCount', totalCount)
+                        .then(() => {
+                            console.log('[Reminder Counter] updateReminderCount invoke succeeded');
+                        })
+                        .catch((err) => {
+                            console.error('[Reminder Counter] updateReminderCount invoke FAILED:', err);
+                        });
+                } else {
+                    console.error('[Reminder Counter] ipcRenderer or invoke not available!');
+                }
+            } catch (e) {
+                console.error('[Reminder Counter] ERROR in checkReminderCount:', e);
+            }
+        };
+
+        const observer = new MutationObserver((mutations) => {
+            try {
+                let relevantMutation = false;
+                for (const mutation of mutations) {
+                    // Check added/removed nodes for reminder elements
+                    if (mutation.addedNodes || mutation.removedNodes) {
+                        const nodeLists = [mutation.addedNodes, mutation.removedNodes].filter(Boolean);
+                        nodeLists.forEach(nodeList => {
+                            nodeList.forEach(node => {
+                                if (node.nodeType === 1) {
+                                    if (node.hasAttribute && node.hasAttribute('timeuntildisplaystring') ||
+                                        (node.querySelector && node.querySelector('[timeuntildisplaystring]'))) {
+                                        relevantMutation = true;
+                                    }
+                                }
+                            });
+                        });
+                    }
+                }
+
+                if (relevantMutation) {
+                    debouncedCheck();
+                }
+            } catch (e) {
+                console.error('[Reminder Counter] ERROR inside Observer callback:', e);
+            }
+        });
+
+        // Observe the document for reminder changes
+        const targetNode = document.documentElement || document;
+        observer.observe(targetNode, {
+            childList: true,
+            subtree: true
+        });
+
+        // Initial check after a delay
+        setTimeout(checkReminderCount, 1000);
+
+    } catch (e) {
+        console.error('[Reminder Counter] CRITICAL ERROR during setup:', e);
     }
 }
 

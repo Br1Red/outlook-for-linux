@@ -108,10 +108,11 @@ class Menus {
 	/**
 	 * Update the tray icon badge count
 	 * @param {number} count - Number of unread items
+	 * @param {string} type - Badge type ('email' or 'reminder')
 	 */
-	updateTrayBadge(count) {
+	updateTrayBadge(count, type = 'email') {
 		if (this.tray) {
-			this.tray.updateBadge(count);
+			this.tray.updateBadge(count, type);
 		}
 	}
 
