@@ -2,6 +2,10 @@ const { app, ipcMain } = require('electron');
 const path = require('path');
 const { LucidLog } = require('lucid-log');
 const isDev = require('electron-is-dev');
+
+// Set app name for notifications BEFORE anything else
+app.name = 'Microsoft Outlook';
+
 if (app.commandLine.hasSwitch('customUserDir')) {
 	app.setPath('userData', app.commandLine.getSwitchValue('customUserDir'));
 }
@@ -55,10 +59,14 @@ if (process.env.XDG_SESSION_TYPE === 'wayland') {
 	app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 }
 
-const protocolClient = 'msoutlook';
-if (!app.isDefaultProtocolClient(protocolClient, process.execPath)) {
-	app.setAsDefaultProtocolClient(protocolClient, process.execPath);
-}
+// Register protocol handlers
+const protocols = ['msoutlook', 'mailto'];
+protocols.forEach(protocol => {
+	if (!app.isDefaultProtocolClient(protocol, process.execPath)) {
+		app.setAsDefaultProtocolClient(protocol, process.execPath);
+		logger.info(`Registered as default protocol handler for: ${protocol}`);
+	}
+});
 
 app.allowRendererProcessReuse = false;
 
@@ -67,6 +75,11 @@ if (!gotTheLock) {
 	app.quit();
 } else {
 	app.on('second-instance', mainAppWindow.onAppSecondInstance);
+	app.on('open-url', (event, url) => {
+		event.preventDefault();
+		logger.info('open-url event received:', url);
+		mainAppWindow.onAppSecondInstance(event, [url]);
+	});
 	app.on('ready', handleAppReady);
 	app.on('quit', () => logger.debug('quit'));
 	app.on('render-process-gone', onRenderProcessGone);

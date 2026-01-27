@@ -1,5 +1,6 @@
 {
   "name": "outlook-for-linux",
+  "productName": "Microsoft Outlook",
   "version": "1.3.16",
   "main": "app/index.js",
   "description": "Unofficial client for Microsoft Outlook for Linux",
@@ -50,7 +51,7 @@
   },
   "devDependencies": {
     "electron": "39.3.0",
-    "electron-builder": "26.0.12",
+    "electron-builder": "26.4.0",
     "eslint": "8.51.0",
     "yarn": "1.22.19"
   },
@@ -59,7 +60,8 @@
     "protocols": {
       "name": "msoutlook",
       "schemes": [
-        "msoutlook"
+        "msoutlook",
+        "mailto"
       ]
     },
     "extraResources": [
@@ -74,6 +76,14 @@
       "executableName": "outlook-for-linux",
       "synopsis": "Outlook for Linux",
       "description": "Unofficial Microsoft Outlook client for Linux using Electron. It uses the Web App and wraps it as a standalone application using Electron.",
+      "desktop": {
+        "entry": {
+          "Name": "Microsoft Outlook",
+          "Comment": "Unofficial Microsoft Outlook client for Linux",
+          "StartupWMClass": "Microsoft Outlook",
+          "MimeType": "x-scheme-handler/mailto;x-scheme-handler/msoutlook;"
+        }
+      },
       "target": [
         "rpm",
         "deb",

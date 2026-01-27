@@ -52,11 +52,22 @@ exports.onAppReady = async function onAppReady(mainConfig) {
 
 	addEventHandlers();
 
-	const url = processArgs(process.argv);
-	connMgr.start(url,{
-		window: window,
-		config: config
-	});
+	const result = processArgs(process.argv);
+	if (result && result.isMailto) {
+		// Open mailto in new compose window
+		openComposeWindow(result.url);
+		// Start with default URL
+		connMgr.start(null, {
+			window: window,
+			config: config
+		});
+	} else {
+		// Start with the provided URL or default
+		connMgr.start(result ? result.url : null, {
+			window: window,
+			config: config
+		});
+	}
 
 	applyAppConfiguration(config, window);
 };
@@ -67,11 +78,18 @@ exports.onAppSecondInstance = function onAppSecondInstance(event, args) {
 	logger.debug('second-instance started');
 	if (window) {
 		event.preventDefault();
-		const url = processArgs(args);
-		if (url && allowFurtherRequests) {
+		const result = processArgs(args);
+		if (result && allowFurtherRequests) {
 			allowFurtherRequests = false;
 			setTimeout(() => { allowFurtherRequests = true; }, 5000);
-			window.loadURL(url, { userAgent: config.chromeUserAgent });
+
+			if (result.isMailto) {
+				// Open mailto links in new compose window
+				openComposeWindow(result.url);
+			} else {
+				// Load other URLs in main window
+				window.loadURL(result.url, { userAgent: config.chromeUserAgent });
+			}
 		}
 
 		restoreWindow();
@@ -120,18 +138,107 @@ function restoreWindow() {
 function processArgs(args) {
 	var regHttps = /^https:\/\/outlook.microsoft.com\/l\/(meetup-join|channel)\//g;
 	var regMS = /^msoutlook:\/l\/(meetup-join|channel)\//g;
+	var regMailto = /^mailto:/i;
 	logger.debug('processArgs:', args);
 	for (const arg of args) {
 		if (regHttps.test(arg)) {
 			logger.debug('A url argument received with https protocol');
 			window.show();
-			return arg;
+			return { url: arg, isMailto: false };
 		}
 		if (regMS.test(arg)) {
 			logger.debug('A url argument received with msoutlook protocol');
 			window.show();
-			return config.url + arg.substring(8, arg.length);
+			return { url: config.url + arg.substring(8, arg.length), isMailto: false };
 		}
+		if (regMailto.test(arg)) {
+			logger.debug('A mailto argument received');
+			window.show();
+			// Convert mailto: URL to Outlook compose URL
+			return { url: convertMailtoToOutlookURL(arg), isMailto: true };
+		}
+	}
+}
+
+/**
+ * Open a new compose window with the given URL
+ * @param {string} url - Outlook compose URL
+ */
+function openComposeWindow(url) {
+	const composeWindow = new BrowserWindow({
+		width: 1000,
+		height: 800,
+		backgroundColor: isDarkMode ? '#302a75' : '#fff',
+		show: false,
+		autoHideMenuBar: true,
+		icon: iconChooser.getFile(),
+		webPreferences: {
+			partition: config.partition,
+			preload: path.join(__dirname, '..', 'browser', 'index.js'),
+			contextIsolation: false,
+			sandbox: false,
+			spellcheck: false
+		}
+	});
+
+	require('@electron/remote/main').enable(composeWindow.webContents);
+
+	composeWindow.once('ready-to-show', () => {
+		composeWindow.show();
+	});
+
+	composeWindow.loadURL(url, { userAgent: config.chromeUserAgent });
+
+	logger.debug('Compose window opened with URL:', url);
+}
+
+/**
+ * Convert mailto: URL to Outlook compose URL
+ * @param {string} mailtoUrl - mailto URL (e.g., mailto:user@example.com?subject=Hello)
+ * @returns {string} Outlook compose URL
+ */
+function convertMailtoToOutlookURL(mailtoUrl) {
+	try {
+		// Remove 'mailto:' prefix
+		const mailtoContent = mailtoUrl.substring(7);
+
+		// Parse the mailto URL
+		const [recipient, queryString] = mailtoContent.split('?');
+
+		// Build Outlook compose URL
+		let outlookUrl = config.url;
+		if (!outlookUrl.endsWith('/')) {
+			outlookUrl += '/';
+		}
+		outlookUrl += 'mail/deeplink/compose?';
+
+		// Add recipient
+		if (recipient) {
+			outlookUrl += `to=${encodeURIComponent(recipient)}`;
+		}
+
+		// Add other parameters (subject, body, cc, bcc)
+		if (queryString) {
+			const params = new URLSearchParams(queryString);
+			if (params.has('subject')) {
+				outlookUrl += `&subject=${encodeURIComponent(params.get('subject'))}`;
+			}
+			if (params.has('body')) {
+				outlookUrl += `&body=${encodeURIComponent(params.get('body'))}`;
+			}
+			if (params.has('cc')) {
+				outlookUrl += `&cc=${encodeURIComponent(params.get('cc'))}`;
+			}
+			if (params.has('bcc')) {
+				outlookUrl += `&bcc=${encodeURIComponent(params.get('bcc'))}`;
+			}
+		}
+
+		logger.debug('Converted mailto URL to:', outlookUrl);
+		return outlookUrl;
+	} catch (err) {
+		logger.error('Error converting mailto URL:', err);
+		return config.url;
 	}
 }
 
