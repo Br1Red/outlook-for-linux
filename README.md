@@ -15,7 +15,7 @@ A clone of https://github.com/IsmaelMartinez/teams-for-linux but for outlook
 
 # IMPORTANT
 
-Notification for new emails -- You have to set the notification style to alert which is gonna display at almost in the upper right corner.
+Notification for new emails and reminders -- You have to set the notification style to alert which is gonna display at almost in the upper right corner.
 <p><img width="207" height="135" alt="image" src="https://github.com/user-attachments/assets/121e60ac-9e4a-47a8-a6b2-e2896f515567" /><p></p>
 
 ## Downloads
