@@ -5,6 +5,10 @@ const isDev = require('electron-is-dev');
 
 // Set app name for notifications BEFORE anything else
 app.name = 'Microsoft Outlook';
+// Set desktop name to match the .desktop file for notification persistence
+if (process.platform === 'linux') {
+	app.setDesktopName('outlook-for-linux.desktop');
+}
 
 if (app.commandLine.hasSwitch('customUserDir')) {
 	app.setPath('userData', app.commandLine.getSwitchValue('customUserDir'));

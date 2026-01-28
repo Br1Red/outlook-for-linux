@@ -18,10 +18,6 @@ class Menus {
 		this.config = config;
 		this.appConfig = appConfig;
 		this.allowQuit = false;
-		// Load saved notification auto-dismiss setting from persistent store
-		this.notificationAutoDismiss = appConfig && appConfig.settingsStore
-			? appConfig.settingsStore.get('notificationAutoDismiss', false)
-			: false;
 		this.logger = new LucidLog({
 			levels: config.appLogLevels.split(',')
 		});
@@ -148,20 +144,6 @@ class Menus {
 			this.logger.error('Error creating notification:', error);
 			this.logger.error('Stack:', error.stack);
 		}
-	}
-
-	toggleNotificationAutoDismiss(enabled) {
-		this.notificationAutoDismiss = enabled;
-		this.logger.info('Notification auto-dismiss:', enabled ? 'enabled' : 'disabled');
-
-		// Save to persistent store
-		if (this.appConfig && this.appConfig.settingsStore) {
-			this.appConfig.settingsStore.set('notificationAutoDismiss', enabled);
-		}
-
-		// Rebuild tray menu to update checkbox state
-		const appMenu = application(this);
-		this.tray.tray.setContextMenu(Menu.buildFromTemplate(appMenu.submenu));
 	}
 
 	initializeEventHandlers() {
