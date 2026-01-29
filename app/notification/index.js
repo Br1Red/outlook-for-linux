@@ -219,14 +219,13 @@ function showReminderNotification(notification) {
 }
 
 /**
- * Extract sender name from address (handles "Name" or "Name (email@domain.com)")
+ * Get sender display text (already formatted by Outlook as name or email)
  * @param {string} address
  * @returns {string}
  */
 function getSenderName(address) {
-    // If format is "Name (email)", extract just "Name"
-    const match = address.match(/^([^(]+)\s*\(/);
-    return match ? match[1].trim() : address;
+    // Address is already just the name or email from Outlook
+    return address;
 }
 
 /**

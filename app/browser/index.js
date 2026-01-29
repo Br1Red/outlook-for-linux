@@ -213,28 +213,21 @@ function isEmailNotification(button) {
  * @returns {{address: string, subject: string} | null}
  */
 function extractEmailData(button, ariaLabel) {
-    // 1. Get Sender Name
+    // 1. Get Sender (Outlook shows email if no display name)
     const senderElement = button.querySelector('.ZJg8d > div:first-child');
-    const senderName = senderElement?.textContent?.trim();
+    const sender = senderElement?.textContent?.trim();
 
     // 2. Get Subject
     const subjectElement = button.querySelector('.KTZ84');
     const subject = subjectElement?.textContent?.trim();
 
-    // 3. Extract Body and Email
+    // 3. Extract Body
     const bodyElement = button.querySelector('.mrxI1');
-    let senderEmail = null;
     let messageBody = '';
 
     if (bodyElement) {
         const fullText = bodyElement.textContent;
-
-        // Extract Email: Use email regex pattern (handles HTML-encoded brackets)
         const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/;
-        const emailMatch = fullText.match(emailRegex);
-        if (emailMatch && emailMatch[1]) {
-            senderEmail = emailMatch[1];
-        }
 
         // Process lines to clean up the body
         const lines = fullText.split('\n');
@@ -263,19 +256,11 @@ function extractEmailData(button, ariaLabel) {
         messageBody = cleanLines.join('\n');
     }
 
-    // 4. Format Address as "Name (email)"
-    let formattedAddress = '';
-    if (senderName && senderEmail) {
-        formattedAddress = `${senderName} (${senderEmail})`;
-    } else if (senderName) {
-        formattedAddress = senderName;
-    } else if (senderEmail) {
-        formattedAddress = senderEmail;
-    } else {
-        // Fallback logic using aria-label
+    // 4. Use sender from element or fallback to aria-label
+    const formattedAddress = sender || (() => {
         const colonIndex = ariaLabel.indexOf(':');
-        formattedAddress = colonIndex > -1 ? ariaLabel.substring(colonIndex + 1).trim() : 'Unknown';
-    }
+        return colonIndex > -1 ? ariaLabel.substring(colonIndex + 1).trim() : 'Unknown';
+    })();
 
     return {
         address: formattedAddress,
