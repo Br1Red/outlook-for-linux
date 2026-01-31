@@ -36,14 +36,29 @@ exports = module.exports = (Menus) => ({
 		{
 			type: 'separator',
 		},
-		getSettingsMenu(Menus)
-		,
+		getAccountsMenu(Menus),
+		{
+			type: 'separator',
+		},
+		getSettingsMenu(Menus),
 		{
 			type: 'separator',
 		},
 		getQuitMenu(Menus)
 	],
 });
+
+function getAccountsMenu(Menus) {
+	return {
+		label: 'Accounts',
+		submenu: Menus.getAccountsMenuItems ? Menus.getAccountsMenuItems() : [
+			{
+				label: 'Add Account',
+				click: () => Menus.createAccount()
+			}
+		]
+	};
+}
 
 function getSettingsMenu(Menus) {
 	return {

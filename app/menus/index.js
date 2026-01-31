@@ -18,39 +18,196 @@ class Menus {
 		this.config = config;
 		this.appConfig = appConfig;
 		this.allowQuit = false;
+		/**
+		 * @type {AccountManager|null}
+		 */
+		this.accountManager = null;
 		this.logger = new LucidLog({
 			levels: config.appLogLevels.split(',')
 		});
 		this.initialize();
 	}
 
+	/**
+	 * Set the account manager reference
+	 * @param {AccountManager} accountManager
+	 */
+	setAccountManager(accountManager) {
+		this.accountManager = accountManager;
+		this.updateTrayMenu();
+	}
+
+	/**
+	 * Get account menu items for the Accounts menu
+	 * @returns {Array}
+	 */
+	getAccountsMenuItems() {
+		if (!this.accountManager) {
+			return [
+				{
+					label: 'Add Account',
+					click: () => this.createAccount()
+				}
+			];
+		}
+
+		const accounts = this.accountManager.getAllAccounts();
+		const items = [];
+
+		// Add Account
+		items.push({
+			label: 'Add Account',
+			click: () => this.createAccount()
+		});
+
+		items.push({ type: 'separator' });
+
+		// List all accounts
+		accounts.forEach(account => {
+			const label = account.email || account.displayName;
+			items.push({
+				label: `${label} ${account.autoRestore ? '✓' : ''}`,
+				submenu: [
+					{
+						label: 'Focus Window',
+						click: () => this.focusAccount(account.id)
+					},
+					{
+						label: 'Auto-restore on startup',
+						type: 'checkbox',
+						checked: account.autoRestore !== false,
+						click: () => this.toggleAutoRestore(account.id)
+					},
+					{ type: 'separator' },
+					{
+						label: 'Remove Account',
+						click: () => this.removeAccount(account.id)
+					}
+				]
+			});
+		});
+
+		return items;
+	}
+
+	/**
+	 * Create a new account
+	 */
+	async createAccount() {
+		if (this.accountManager) {
+			const account = this.accountManager.createAccount();
+			this.logger.info(`Created account: ${account.displayName}`);
+		} else {
+			// Fallback: use IPC
+			const { ipcRenderer } = require('electron');
+			// This won't work in main process, so we need to handle it differently
+			this.logger.warn('Account manager not available');
+		}
+	}
+
+	/**
+	 * Remove an account
+	 * @param {string} accountId
+	 */
+	async removeAccount(accountId) {
+		if (this.accountManager) {
+			this.accountManager.removeAccount(accountId);
+		}
+	}
+
+	/**
+	 * Focus an account's window
+	 * @param {string} accountId
+	 */
+	async focusAccount(accountId) {
+		if (this.accountManager) {
+			this.accountManager.focusAccount(accountId);
+		}
+	}
+
+	/**
+	 * Toggle auto-restore for an account
+	 * @param {string} accountId
+	 */
+	async toggleAutoRestore(accountId) {
+		if (this.accountManager) {
+			this.accountManager.toggleAutoRestore(accountId);
+		}
+	}
+
+	/**
+	 * Update tray menu (called when accounts change)
+	 */
+	updateTrayMenu() {
+		if (this.tray && this.tray.updateMenu) {
+			this.tray.updateMenu();
+		}
+	}
+
 	async quit(clearStorage = false) {
 		this.allowQuit = true;
 
-		clearStorage = clearStorage && dialog.showMessageBoxSync(this.window, {
-			buttons: ['Yes', 'No'],
-			title: 'Quit',
-			normalizeAccessKeys: true,
-			defaultId: 1,
-			cancelId: 1,
-			message: 'Are you sure you want to clear the storage before quitting?',
-			type: 'question'
-		}) === 0;
+		// Handle quit for multi-account mode
+		if (this.accountManager) {
+			if (clearStorage) {
+				const confirmed = dialog.showMessageBoxSync(null, {
+					buttons: ['Yes', 'No'],
+					title: 'Quit',
+					normalizeAccessKeys: true,
+					defaultId: 1,
+					cancelId: 1,
+					message: 'Are you sure you want to clear the storage before quitting?',
+					type: 'question'
+				}) === 0;
 
-		if (clearStorage) {
-			const defSession = session.fromPartition(this.config.partition);
-			await defSession.clearStorageData();
+				if (confirmed) {
+					// Clear storage for all accounts
+					const accounts = this.accountManager.getAllAccounts();
+					for (const account of accounts) {
+						const { session } = require('electron');
+						const accountSession = session.fromPartition(account.partition);
+						await accountSession.clearStorageData();
+					}
+				}
+			}
+
+			// Close all account windows
+			this.accountManager.closeAllWindows();
+		} else if (this.window) {
+			// Single account mode
+			clearStorage = clearStorage && dialog.showMessageBoxSync(this.window, {
+				buttons: ['Yes', 'No'],
+				title: 'Quit',
+				normalizeAccessKeys: true,
+				defaultId: 1,
+				cancelId: 1,
+				message: 'Are you sure you want to clear the storage before quitting?',
+				type: 'question'
+			}) === 0;
+
+			if (clearStorage) {
+				const defSession = session.fromPartition(this.config.partition);
+				await defSession.clearStorageData();
+			}
+
+			this.window.close();
+		} else {
+			// No window and no account manager, just quit
+			const { app } = require('electron');
+			app.quit();
 		}
-
-		this.window.close();
 	}
 
 	open() {
-		if (!this.window.isVisible()) {
-			this.window.show();
+		if (this.accountManager) {
+			// Show all account windows
+			this.accountManager.showAllWindows();
+		} else if (this.window) {
+			if (!this.window.isVisible()) {
+				this.window.show();
+			}
+			this.window.focus();
 		}
-
-		this.window.focus();
 	}
 
 	about() {
@@ -61,7 +218,10 @@ class Menus {
 				appInfo.push(`${prop}: ${process.versions[prop]}`);
 			}
 		}
-		dialog.showMessageBoxSync(this.window, {
+		const targetWindow = this.accountManager ?
+			this.accountManager.getAllAccounts().find(a => a.window)?.window :
+			this.window;
+		dialog.showMessageBoxSync(targetWindow || null, {
 			buttons: ['OK'],
 			title: 'About',
 			normalizeAccessKeys: true,
@@ -73,37 +233,75 @@ class Menus {
 	}
 
 	reload(show = true) {
-		if (show) {
-			this.window.show();
+		if (this.accountManager) {
+			// Reload all account windows
+			const accounts = this.accountManager.getAllAccounts();
+			accounts.forEach(account => {
+				if (account.window && !account.window.isDestroyed()) {
+					if (show) account.window.show();
+					account.window.reload();
+				}
+			});
+		} else if (this.window) {
+			if (show) {
+				this.window.show();
+			}
+			connectionManager.refresh();
 		}
-
-		connectionManager.refresh();
 	}
 
 	debug() {
-		this.window.openDevTools();
+		if (this.accountManager) {
+			// Open DevTools for first account window
+			const accounts = this.accountManager.getAllAccounts();
+			const firstAccount = accounts.find(a => a.window && !a.window.isDestroyed());
+			if (firstAccount) {
+				firstAccount.window.openDevTools();
+			}
+		} else if (this.window) {
+			this.window.openDevTools();
+		}
 	}
 
 	hide() {
-		this.window.hide();
+		if (this.accountManager) {
+			// Hide all account windows
+			const accounts = this.accountManager.getAllAccounts();
+			accounts.forEach(account => {
+				if (account.window && !account.window.isDestroyed()) {
+					account.window.hide();
+				}
+			});
+		} else if (this.window) {
+			this.window.hide();
+		}
 	}
 
 	initialize() {
 		const appMenu = application(this);
 
-		if (this.config.menubar === 'hidden') {
-			this.window.removeMenu();
-		} else {
-			this.window.setMenu(Menu.buildFromTemplate([
-				appMenu,
-				preferences(),
-				help(app, this.window),
-			]));
+		// Only set menu if window exists
+		if (this.window) {
+			if (this.config.menubar === 'hidden') {
+				this.window.removeMenu();
+			} else {
+				this.window.setMenu(Menu.buildFromTemplate([
+					appMenu,
+					preferences(),
+					help(app, this.window),
+				]));
+			}
+
+			this.initializeEventHandlers();
 		}
 
-		this.initializeEventHandlers();
+		// Create tray (works with null window in multi-account mode)
+		this.tray = new Tray(null, appMenu.submenu, this.iconPath, this.config);
 
-		this.tray = new Tray(this.window, appMenu.submenu, this.iconPath, this.config);
+		// If accountManager is already set, update tray
+		if (this.accountManager) {
+			this.tray.setAccountManager(this.accountManager);
+		}
 	}
 
 	/**
@@ -130,8 +328,12 @@ class Menus {
 
 			notification.on('click', () => {
 				this.logger.info('Notification has been clicked');
-				this.window.show();
-				this.window.focus();
+				if (this.accountManager) {
+					this.accountManager.showAllWindows();
+				} else if (this.window) {
+					this.window.show();
+					this.window.focus();
+				}
 			});
 
 			notification.on('close', () => {
@@ -150,7 +352,10 @@ class Menus {
 		app.on('before-quit', () => this.onBeforeQuit());
 		ipcMain.on('get-outlook-settings', saveSettingsInternal);
 		ipcMain.on('set-outlook-settings', restoreSettingsInternal);
-		this.window.on('close', (event) => this.onClose(event));
+		// Only attach close handler if we have a window (single account mode)
+		if (this.window) {
+			this.window.on('close', (event) => this.onClose(event));
+		}
 	}
 
 	onBeforeQuit() {
@@ -165,16 +370,44 @@ class Menus {
 			this.hide();
 		} else {
 			this.tray.close();
-			this.window.webContents.session.flushStorageData();
+			if (this.window) {
+				this.window.webContents.session.flushStorageData();
+			}
 		}
 	}
 
 	saveSettings() {
-		this.window.webContents.send('get-outlook-settings');
+		if (this.accountManager) {
+			// Send to all account windows
+			const accounts = this.accountManager.getAllAccounts();
+			accounts.forEach(account => {
+				if (account.window && !account.window.isDestroyed()) {
+					account.window.webContents.send('get-outlook-settings');
+				}
+			});
+		} else if (this.window) {
+			this.window.webContents.send('get-outlook-settings');
+		}
 	}
 
 	restoreSettings() {
-		this.window.webContents.send('set-outlook-settings', JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'outlook_settings.json'))));
+		const settingsPath = path.join(app.getPath('userData'), 'outlook_settings.json');
+		try {
+			const settings = JSON.parse(fs.readFileSync(settingsPath));
+			if (this.accountManager) {
+				// Send to all account windows
+				const accounts = this.accountManager.getAllAccounts();
+				accounts.forEach(account => {
+					if (account.window && !account.window.isDestroyed()) {
+						account.window.webContents.send('set-outlook-settings', settings);
+					}
+				});
+			} else if (this.window) {
+				this.window.webContents.send('set-outlook-settings', settings);
+			}
+		} catch (e) {
+			this.logger.error('Error loading settings:', e);
+		}
 	}
 }
 

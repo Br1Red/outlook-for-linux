@@ -5,10 +5,20 @@ console.log('[Preload] Script starting...');
 
 	console.log('[Preload] Inside IIFE, getting config...');
 
+	// Get account ID from additional arguments
+	const accountIdArg = process.argv.find(arg => arg.startsWith('--accountId='));
+	const accountId = accountIdArg ? accountIdArg.split('=')[1] : null;
+	console.log('[Preload] Account ID:', accountId);
+
 	let config;
 	ipcRenderer.invoke('getConfig').then(mainConfig => {
 		config = mainConfig;
 		console.log('[Preload] Config loaded, disableNotifications:', config.disableNotifications);
+
+		// Start account email detection if we have an account ID
+		if (accountId) {
+			detectAccountEmail(accountId, ipcRenderer);
+		}
 
 		// Initialize notification interception FIRST (before other modules that might fail)
 		if (!config.disableNotifications) {
@@ -17,12 +27,22 @@ console.log('[Preload] Script starting...');
 			console.log('[Preload] initNotificationInterception called');
 
 			// Setup unread count observer
-			console.log('[Preload] Setting up unread count observer...');
-			setupUnreadCountObserver(ipcRenderer);
+			if (accountId) {
+				console.log('[Preload] Setting up unread count observer...');
+				setupUnreadCountObserver(ipcRenderer, accountId);
 
-			// Setup reminder count observer
-			console.log('[Preload] Setting up reminder count observer...');
-			setupReminderCountObserver(ipcRenderer);
+				// Setup reminder count observer
+				console.log('[Preload] Setting up reminder count observer...');
+				setupReminderCountObserver(ipcRenderer, accountId);
+			} else {
+				// Fallback for single account mode (no accountId)
+				console.log('[Preload] Setting up unread count observer (no accountId)...');
+				setupUnreadCountObserver(ipcRenderer, null);
+
+				// Setup reminder count observer
+				console.log('[Preload] Setting up reminder count observer (no accountId)...');
+				setupReminderCountObserver(ipcRenderer, null);
+			}
 		}
 
 		// Initialize other modules (wrapped in try-catch as they have issues)
@@ -299,8 +319,9 @@ function extractReminderData(element) {
 /**
  * Setup observer to watch Outlook's unread email counter
  * @param {Electron.IpcRenderer} ipcRenderer
+ * @param {string} accountId
  */
-function setupUnreadCountObserver(ipcRenderer) {
+function setupUnreadCountObserver(ipcRenderer, accountId) {
 
     try {
         let debounceTimer;
@@ -322,9 +343,9 @@ function setupUnreadCountObserver(ipcRenderer) {
                 });
 
                 console.log('[Unread Counter] Total unread count:', totalCount);
-                
+
                 if (ipcRenderer && ipcRenderer.invoke) {
-                    ipcRenderer.invoke('updateUnreadCount', totalCount);
+                    ipcRenderer.invoke('updateUnreadCount', { accountId, count: totalCount });
                 }
             } catch (e) {
                 console.error('[Unread Counter] ERROR in checkUnreadCount:', e);
@@ -408,8 +429,9 @@ function setupUnreadCountObserver(ipcRenderer) {
 /**
  * Setup observer to watch for active reminders
  * @param {Electron.IpcRenderer} ipcRenderer
+ * @param {string} accountId
  */
-function setupReminderCountObserver(ipcRenderer) {
+function setupReminderCountObserver(ipcRenderer, accountId) {
     try {
         let debounceTimer;
         const debouncedCheck = () => {
@@ -427,7 +449,7 @@ function setupReminderCountObserver(ipcRenderer) {
 
                 if (ipcRenderer && ipcRenderer.invoke) {
                     console.log('[Reminder Counter] Invoking updateReminderCount with count:', totalCount);
-                    ipcRenderer.invoke('updateReminderCount', totalCount)
+                    ipcRenderer.invoke('updateReminderCount', { accountId, count: totalCount })
                         .then(() => {
                             console.log('[Reminder Counter] updateReminderCount invoke succeeded');
                         })
@@ -483,6 +505,88 @@ function setupReminderCountObserver(ipcRenderer) {
     } catch (e) {
         console.error('[Reminder Counter] CRITICAL ERROR during setup:', e);
     }
+}
+
+/**
+ * Detect account email from page title
+ * Outlook shows email in title like "Outlook - user@example.com"
+ * @param {string} accountId
+ * @param {Electron.IpcRenderer} ipcRenderer
+ */
+function detectAccountEmail(accountId, ipcRenderer) {
+    let foundEmail = null;
+    let emailSent = false;
+
+    function checkEmail() {
+        try {
+            // First, try to find the primaryMailboxRoot element
+            const primaryMailboxRoot = document.querySelector('[id^="primaryMailboxRoot_"]');
+            if (primaryMailboxRoot) {
+                // Get direct child spans only (not nested inside buttons or other elements)
+                const emailSpan = Array.from(primaryMailboxRoot.children).find(child => child.tagName === 'SPAN');
+
+                if (emailSpan) {
+                    // Get textContent from the direct child span
+                    const text = emailSpan.textContent?.trim() || '';
+
+                    // Check if it's an email address
+                    const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/);
+                    if (emailMatch) {
+                        const email = emailMatch[0];
+                        if (foundEmail !== email) {
+                            foundEmail = email;
+                            if (!emailSent) {
+                                emailSent = true;
+                                ipcRenderer.invoke('account-email-detected', { accountId, email });
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // Fallback: check page title
+            const title = document.title || '';
+            const emailMatch = title.match(/[\w.-]+@[\w.-]+\.\w+/);
+            if (emailMatch) {
+                const email = emailMatch[0];
+                if (!emailSent) {
+                    emailSent = true;
+                    ipcRenderer.invoke('account-email-detected', { accountId, email });
+                }
+            }
+        } catch (e) {
+            console.error('[Account Email Detection] Error:', e);
+        }
+    }
+
+    // Check once immediately
+    checkEmail();
+
+    // Watch for primaryMailboxRoot to appear (if page is still loading)
+    // Wait for document.body to be available
+    const startObserver = () => {
+        if (!document.body) {
+            // Try again in 100ms
+            setTimeout(startObserver, 100);
+            return;
+        }
+
+        const observer = new MutationObserver(() => {
+            if (!emailSent) {
+                checkEmail();
+            }
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        // Stop observing after 30 seconds to save resources
+        setTimeout(() => {
+            observer.disconnect();
+        }, 30000);
+    };
+
+    startObserver();
 }
 
 /**

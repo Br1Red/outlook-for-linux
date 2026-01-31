@@ -46,11 +46,16 @@ const certificateModule = require('./certificate');
 const notificationModule = require('./notification');
 const gotTheLock = app.requestSingleInstanceLock();
 const mainAppWindow = require('./mainAppWindow');
+const AccountManager = require('./accountManager');
 
 if (config.proxyServer) app.commandLine.appendSwitch('proxy-server', config.proxyServer);
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('enable-ntlm-v2', config.ntlmV2enabled);
 app.commandLine.appendSwitch('try-supported-channel-layouts');
+
+// Enable S/MIME support - allow client certificates
+app.commandLine.appendSwitch('ignore-certificate-errors-spki-list');
+logger.info('Enabled client certificate support for S/MIME');
 
 if (process.env.XDG_SESSION_TYPE === 'wayland') {
 	logger.info('Running under Wayland, switching to PipeWire...');
@@ -89,6 +94,7 @@ if (!gotTheLock) {
 	app.on('render-process-gone', onRenderProcessGone);
 	app.on('will-quit', () => logger.debug('will-quit'));
 	app.on('certificate-error', handleCertificateError);
+	app.on('select-client-certificate', handleSelectClientCertificate);
 	ipcMain.handle('getConfig', handleGetConfig);
 	ipcMain.handle('getZoomLevel', handleGetZoomLevel);
 	ipcMain.handle('saveZoomLevel', handleSaveZoomLevel);
@@ -98,6 +104,20 @@ if (!gotTheLock) {
 	ipcMain.handle('showReminderNotification', handleShowReminderNotification);
 	ipcMain.handle('updateUnreadCount', handleUpdateUnreadCount);
 	ipcMain.handle('updateReminderCount', handleUpdateReminderCount);
+	ipcMain.handle('account-email-detected', handleAccountEmailDetected);
+	ipcMain.handle('create-account', handleCreateAccount);
+	ipcMain.handle('remove-account', handleRemoveAccount);
+	ipcMain.handle('focus-account', handleFocusAccount);
+	ipcMain.handle('toggle-auto-restore', handleToggleAutoRestore);
+	ipcMain.handle('set-account-display-name', handleSetAccountDisplayName);
+	ipcMain.handle('get-accounts', handleGetAccounts);
+}
+
+// Global reference to account manager (set by mainAppWindow)
+let accountManager = null;
+
+function setAccountManager(am) {
+	accountManager = am;
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -199,6 +219,32 @@ function handleCertificateError() {
 }
 
 /**
+ * Handle client certificate selection for S/MIME
+ * This allows Outlook to use system certificates for encrypted emails
+ */
+function handleSelectClientCertificate(event, webContents, url, list, callback) {
+	event.preventDefault();
+
+	logger.info(`Client certificate requested for URL: ${url}`);
+	logger.info(`Available certificates: ${list.length}`);
+
+	if (list.length > 0) {
+		// Log certificate details for debugging
+		list.forEach((cert, index) => {
+			logger.info(`Certificate ${index}: ${cert.subjectName} (Issuer: ${cert.issuerName})`);
+		});
+
+		// Select the first available certificate
+		// In a production app, you might want to prompt the user to choose
+		callback(list[0]);
+		logger.info(`Selected certificate: ${list[0].subjectName}`);
+	} else {
+		logger.warn('No client certificates available');
+		callback();
+	}
+}
+
+/**
  * Handle user-status-changed message
  *
  * @param {*} event
@@ -235,20 +281,120 @@ async function handleShowReminderNotification(event, notification) {
  * Handle unread count update from preload script
  *
  * @param {*} event
- * @param {number} count
+ * @param {{accountId: string|null, count: number}} data
  */
-async function handleUpdateUnreadCount(event, count) {
-	console.log(`[Main] Unread count updated: ${count}`);
-	notificationModule.updateBadgeFromUnreadCount(count);
+async function handleUpdateUnreadCount(event, data) {
+	console.log(`[Main] Unread count updated:`, data);
+	const count = typeof data === 'number' ? data : data.count;
+	const accountId = typeof data === 'object' && data.accountId ? data.accountId : null;
+
+	// Update account manager if we have accountId
+	if (accountManager && accountId) {
+		accountManager.updateUnreadCount(accountId, count);
+	} else {
+		// Fallback for single account mode
+		notificationModule.updateBadgeFromUnreadCount(count);
+	}
 }
 
 /**
  * @param {*} event
- * @param {number} count
+ * @param {{accountId: string|null, count: number}} data
  */
-async function handleUpdateReminderCount(event, count) {
-	console.log(`[Main] Reminder count updated: ${count}`);
-	console.log('[Main] Calling notificationModule.updateBadgeFromReminderCount...');
-	notificationModule.updateBadgeFromReminderCount(count);
-	console.log('[Main] Called notificationModule.updateBadgeFromReminderCount');
+async function handleUpdateReminderCount(event, data) {
+	console.log(`[Main] Reminder count updated:`, data);
+	const count = typeof data === 'number' ? data : data.count;
+	const accountId = typeof data === 'object' && data.accountId ? data.accountId : null;
+
+	// Update account manager if we have accountId
+	if (accountManager && accountId) {
+		accountManager.updateReminderCount(accountId, count);
+	} else {
+		// Fallback for single account mode
+		console.log('[Main] Calling notificationModule.updateBadgeFromReminderCount...');
+		notificationModule.updateBadgeFromReminderCount(count);
+		console.log('[Main] Called notificationModule.updateBadgeFromReminderCount');
+	}
 }
+
+/**
+ * Handle account email detection from preload script
+ * @param {*} event
+ * @param {{accountId: string, email: string}} data
+ */
+async function handleAccountEmailDetected(event, data) {
+	console.log(`[Main] Account email detected: ${data.accountId} -> ${data.email}`);
+	if (accountManager) {
+		accountManager.setAccountEmail(data.accountId, data.email);
+	}
+}
+
+/**
+ * Handle create account request
+ * @param {*} event
+ * @param {Object} options
+ */
+async function handleCreateAccount(event, options) {
+	if (accountManager) {
+		return accountManager.createAccount(options);
+	}
+	return null;
+}
+
+/**
+ * Handle remove account request
+ * @param {*} event
+ * @param {string} accountId
+ */
+async function handleRemoveAccount(event, accountId) {
+	if (accountManager) {
+		accountManager.removeAccount(accountId);
+	}
+}
+
+/**
+ * Handle focus account request
+ * @param {*} event
+ * @param {string} accountId
+ */
+async function handleFocusAccount(event, accountId) {
+	if (accountManager) {
+		accountManager.focusAccount(accountId);
+	}
+}
+
+/**
+ * Handle toggle auto-restore request
+ * @param {*} event
+ * @param {string} accountId
+ */
+async function handleToggleAutoRestore(event, accountId) {
+	if (accountManager) {
+		accountManager.toggleAutoRestore(accountId);
+	}
+}
+
+/**
+ * Handle set account display name request
+ * @param {*} event
+ * @param {{accountId: string, displayName: string}} data
+ */
+async function handleSetAccountDisplayName(event, data) {
+	if (accountManager) {
+		accountManager.setAccountDisplayName(data.accountId, data.displayName);
+	}
+}
+
+/**
+ * Handle get accounts request
+ * @returns {Array}
+ */
+async function handleGetAccounts() {
+	if (accountManager) {
+		return accountManager.getAllAccounts();
+	}
+	return [];
+}
+
+// Export setAccountManager for use by mainAppWindow
+exports.setAccountManager = setAccountManager;
