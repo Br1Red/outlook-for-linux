@@ -227,6 +227,9 @@ class AccountManager {
 			}
 		});
 
+		// Enable @electron/remote for this window
+		require('@electron/remote/main').enable(window.webContents);
+
 		// Store reference
 		account.window = window;
 
