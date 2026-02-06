@@ -308,6 +308,41 @@ class AccountManager {
 				}
 			}));
 
+			menu.append(new MenuItem({ type: 'separator' }));
+
+			// Standard context menu items (if text is selected or in an input field)
+			if (params.isEditable || params.selectionText) {
+				if (params.misspelledWord) {
+					menu.append(new MenuItem({
+						label: 'Add to Dictionary',
+						click: () => {
+							window.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord);
+						}
+					}));
+					menu.append(new MenuItem({ type: 'separator' }));
+				}
+
+				if (params.isEditable) {
+					menu.append(new MenuItem({ label: 'Cut', role: 'cut' }));
+					menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+					menu.append(new MenuItem({ label: 'Paste', role: 'paste' }));
+				} else if (params.selectionText) {
+					menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+				}
+
+				menu.append(new MenuItem({ type: 'separator' }));
+			}
+
+			// Add "Inspect Element" for debugging
+			if (this.config.webDebug) {
+				menu.append(new MenuItem({
+					label: 'Inspect Element',
+					click: () => {
+						window.webContents.inspectElement(params.x, params.y);
+					}
+				}));
+			}
+
 			menu.popup({ window });
 		});
 
