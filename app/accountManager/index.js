@@ -4,6 +4,7 @@ const windowStateKeeper = require('electron-window-state');
 const { LucidLog } = require('lucid-log');
 const connectionManager = require('../connectionManager');
 const TrayIconChooser = require('../browser/tools/trayIconChooser');
+const TabManager = require('./tabManager');
 
 /**
  * Manages multiple Outlook accounts with isolated sessions
@@ -42,6 +43,23 @@ class AccountManager {
 		/** @type {TrayIconChooser} */
 		this.iconChooser = new TrayIconChooser(config);
 
+		/** @type {TabManager|null} */
+		this.tabManager = null;
+
+		/** @type {BrowserWindow|null} */
+		this.mainTabbedWindow = null;
+
+		/** @type {boolean} */
+		this.tabbedMode = config.tabbedMode || false;
+
+		// Track when main tabbed window is fully ready (for timing tests)
+		/** @type {boolean} */
+		this.mainWindowReady = false;
+
+		// Track if app is quitting (to allow main tabbed window to close)
+		/** @type {boolean} */
+		this.allowQuit = false;
+
 		// Load saved accounts
 		this.loadAccounts();
 
@@ -49,6 +67,11 @@ class AccountManager {
 		this.focusedAccountId = null;
 		this.badgeRotationInterval = null;
 		this.currentBadgeIndex = 0;
+
+		// Initialize tab manager if tabbed mode is enabled
+		if (this.tabbedMode) {
+			this.initializeTabbedMode();
+		}
 
 		// Set this AccountManager on the Menus and Tray
 		if (menus) {
@@ -101,6 +124,12 @@ class AccountManager {
 	 * @param {Account} account
 	 */
 	refreshAccountWindow(account) {
+		// Skip in tabbed mode - tabs handle their own refreshing
+		if (this.tabbedMode) {
+			this.logger.info('Tabbed mode: skipping window refresh');
+			return;
+		}
+
 		if (!account.window || account.window.isDestroyed()) {
 			return;
 		}
@@ -160,7 +189,162 @@ class AccountManager {
 	 * @param {string} [options.displayName] - Optional display name
 	 * @returns {Account} The created account
 	 */
+	initializeTabbedMode() {
+		// Prevent double initialization
+		if (this.mainTabbedWindow && !this.mainTabbedWindow.isDestroyed()) {
+			this.logger.info('Tabbed mode already initialized, skipping');
+			return;
+		}
+
+		this.logger.info('Initializing tabbed mode');
+
+		const { BrowserWindow, nativeTheme } = require('electron');
+		const path = require('path');
+
+		// Create main tabbed window
+		const mainWindow = new BrowserWindow({
+			width: 1400,
+			height: 900,
+			backgroundColor: nativeTheme.shouldUseDarkColors ? '#302a75' : '#ffffff',
+			show: false,
+			autoHideMenuBar: this.config.menubar === 'auto',
+			icon: this.iconChooser.getFile(),
+			webPreferences: {
+				partition: 'persist:outlook-tabbed-ui',
+				nodeIntegration: true,
+				contextIsolation: false,
+				sandbox: false,
+				preload: path.join(__dirname, 'tabbar-preload.js'),
+			}
+		});
+
+		// Store reference
+		this.mainTabbedWindow = mainWindow;
+
+		// Handle window state BEFORE creating TabManager
+		const windowStateKeeper = require('electron-window-state');
+		const mainWindowState = windowStateKeeper({
+			defaultWidth: 1200,
+			defaultHeight: 800
+		});
+
+		// Update window bounds from saved state
+		mainWindow.setBounds({
+			width: mainWindowState.width,
+			height: mainWindowState.height,
+			x: mainWindowState.x,
+			y: mainWindowState.y
+		});
+
+		// Create TabManager
+		this.tabManager = new TabManager(mainWindow, this, this.config);
+
+		// Let window state keeper manage the window
+		mainWindowState.manage(mainWindow);
+
+		// Prevent eval
+		mainWindow.eval = global.eval = function () { // eslint-disable-line no-eval
+			throw new Error('Sorry, this app does not support window.eval().');
+		};
+
+		// Load tab bar UI into main window
+		const tabBarPath = path.join(__dirname, 'tabbar.html');
+		mainWindow.loadFile(tabBarPath);
+
+		// Mark tab bar as injected when loaded
+		mainWindow.webContents.on('did-finish-load', () => {
+			if (!this.tabManager.tabBarInjected) {
+				this.tabManager.tabBarInjected = true;
+				this.logger.info('Tab bar loaded and injected');
+				// Update tab UI with initial state (empty initially)
+				this.tabManager.updateTabUI();
+			}
+		});
+
+		// Show when ready
+		mainWindow.once('ready-to-show', () => {
+			this.mainWindowReady = true;
+			this.logger.info('Main tabbed window ready-to-show fired');
+			mainWindow.show();
+		});
+
+		// Handle window close button - respect closeAppOnCross setting and allow quit
+		mainWindow.on('close', (event) => {
+			if (!this.config.closeAppOnCross && !this.isQuitting) {
+				event.preventDefault();
+				mainWindow.hide();
+			}
+		});
+
+		// Handle DPI scale changes when moving between monitors
+		// 'moved' fires only after drag completes, not continuously during drag
+		mainWindow.on('moved', () => {
+			if (this.tabManager) {
+				this.tabManager.updateTabBounds();
+			}
+		});
+
+		// Debounced resize handler (resize fires continuously during drag)
+		let resizeTimeout;
+		mainWindow.on('resize', () => {
+			if (this.tabManager) {
+				clearTimeout(resizeTimeout);
+				resizeTimeout = setTimeout(() => {
+					this.tabManager.updateTabBounds();
+				}, 100);
+			}
+		});
+
+		// Handle window closed
+		mainWindow.on('closed', () => {
+			this.logger.info('Main tabbed window closed');
+			this.mainTabbedWindow = null;
+			if (this.tabManager) {
+				this.tabManager.destroy();
+			}
+		});
+
+		this.logger.info('Tabbed mode initialized');
+	}
+
+	/**
+	 * Create a new account
+	 * @param {Object} options
+	 * @param {string} [options.email] - Optional email address
+	 * @param {string} [options.displayName] - Optional display name
+	 * @returns {Account} The created account
+	 */
 	createAccount(options = {}) {
+		// If in tabbed mode, use tab manager instead
+		if (this.tabbedMode && this.tabManager) {
+			this.logger.info(`Creating tab for account: ${options.displayName || 'New Account'}`);
+			const id = this.generateAccountId();
+			const partition = `persist:${id}`;
+
+			// Create account object and save to accounts array
+			const account = {
+				id,
+				partition,
+				email: options.email || null,
+				displayName: options.displayName || `Account ${this.accounts.length + 1}`,
+				autoRestore: true,
+				createdAt: Date.now(),
+				window: null,  // No window in tabbed mode
+				unreadCount: 0,
+				reminderCount: 0
+			};
+
+			this.accounts.push(account);
+			this.saveAccounts();
+
+			// Create the tab
+			this.tabManager.createTab(account);
+
+			this.updateTrayMenu();
+			return account;
+		}
+
+		// Otherwise, use existing window-based approach
 		const id = this.generateAccountId();
 		const partition = `persist:${id}`;
 
@@ -192,6 +376,25 @@ class AccountManager {
 	 * @param {Account} account
 	 */
 	createAccountWindow(account) {
+		// In tabbed mode, delegate to TabManager
+		if (this.tabbedMode && this.tabManager) {
+			this.logger.info(`Creating tab for account: ${account.displayName}`);
+			// Check if tab already exists
+			const existingTab = this.tabManager.getTab(account.id);
+			if (existingTab) {
+				this.tabManager.switchTab(account.id);
+				return;
+			}
+			// Create new tab for this account
+			this.tabManager.createTab({
+				id: account.id,
+				displayName: account.displayName,
+				email: account.email,
+				partition: account.partition
+			});
+			return;
+		}
+
 		// Check if window already exists
 		if (account.window && !account.window.isDestroyed()) {
 			account.window.show();
@@ -370,6 +573,11 @@ class AccountManager {
 			account.window.close();
 		}
 
+		// In tabbed mode, close the tab
+		if (this.tabbedMode && this.tabManager) {
+			this.tabManager.closeTab(accountId);
+		}
+
 		// Remove from list
 		this.accounts.splice(index, 1);
 		this.saveAccounts();
@@ -419,18 +627,40 @@ class AccountManager {
 		if (accountsToRestore.length === 0 && this.accounts.length === 0) {
 			// No accounts exist, create first one
 			this.logger.info('No accounts found, creating default account');
-			this.createAccount();
+			// In tabbed mode, wait for main window to be ready before creating first account
+			if (this.tabbedMode && this.mainTabbedWindow) {
+				this.logger.info('Tabbed mode: waiting for main window ready-to-show before creating first account');
+				this.mainTabbedWindow.once('ready-to-show', () => {
+					this.logger.info('Main window ready, creating first account');
+					this.createAccount();
+				});
+				// Show the window to trigger ready-to-show
+				this.mainTabbedWindow.show();
+			} else {
+				this.createAccount();
+			}
 			return;
 		}
 
 		this.logger.info(`Restoring ${accountsToRestore.length} accounts...`);
 
-		for (const account of accountsToRestore) {
-			this.createAccountWindow(account);
+		// TIMING TEST: In tabbed mode, wait for main window to be ready before restoring tabs
+		if (this.tabbedMode && !this.mainWindowReady) {
+			this.logger.info('Tabbed mode: waiting for main window ready-to-show before restoring accounts');
+			this.mainTabbedWindow.once('ready-to-show', () => {
+				this.logger.info('Main window ready, now restoring accounts');
+				for (const account of accountsToRestore) {
+					this.createAccountWindow(account);
+				}
+				this.startBadgeRotation();
+			});
+		} else {
+			for (const account of accountsToRestore) {
+				this.createAccountWindow(account);
+			}
+			// Start badge rotation
+			this.startBadgeRotation();
 		}
-
-		// Start badge rotation
-		this.startBadgeRotation();
 	}
 
 	/**
@@ -442,11 +672,6 @@ class AccountManager {
 		const account = this.getAccount(accountId);
 		if (account && account.email !== email) {
 			account.email = email;
-			// Only update displayName from detection if user hasn't manually set a custom name
-			if (!account.manualDisplayName) {
-				account.displayName = email;
-				this.logger.info(`Updated account display name from detection: ${email}`);
-			}
 			this.saveAccounts();
 			this.logger.info(`Updated account email: ${account.displayName} -> ${email}`);
 			this.updateTrayMenu();
@@ -478,6 +703,11 @@ class AccountManager {
 				account.window.setTitle(`Microsoft Outlook - ${account.displayName}`);
 			}
 
+			// Update tab UI in tabbed mode
+			if (this.tabbedMode && this.tabManager) {
+				this.tabManager.updateTabUI();
+			}
+
 			this.updateTrayMenu();
 		}
 	}
@@ -497,21 +727,48 @@ class AccountManager {
 	}
 
 	/**
-	 * Focus an account's window
+	 * Focus an account's window or tab
 	 * @param {string} accountId
 	 */
 	focusAccount(accountId) {
 		const account = this.getAccount(accountId);
-		if (account && account.window && !account.window.isDestroyed()) {
+		if (!account) {
+			this.logger.warn(`Account not found: ${accountId}`);
+			return;
+		}
+
+		// In tabbed mode, switch to tab instead
+		if (this.tabbedMode && this.tabManager) {
+			this.logger.info(`Tabbed mode: switching to tab: ${account.displayName}`);
+			this.tabManager.switchTab(accountId);
+			this.focusedAccountId = accountId;
+			return;
+		}
+
+		// Original window-based behavior
+		if (account.window && !account.window.isDestroyed()) {
 			account.window.show();
 			account.window.focus();
 		}
+
+		this.focusedAccountId = accountId;
 	}
 
 	/**
 	 * Show all account windows (cascade them)
 	 */
 	showAllWindows() {
+		// In tabbed mode, just show main tabbed window
+		if (this.tabbedMode && this.mainTabbedWindow && !this.mainTabbedWindow.isDestroyed()) {
+			if (this.mainTabbedWindow.isMinimized()) {
+				this.mainTabbedWindow.restore();
+			}
+			this.mainTabbedWindow.show();
+			this.mainTabbedWindow.focus();
+			return;
+		}
+
+		// Original window-based behavior
 		let offset = 0;
 		for (const account of this.accounts) {
 			if (account.window && !account.window.isDestroyed()) {

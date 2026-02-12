@@ -1,5 +1,6 @@
 const yargs = require('yargs');
 const path = require('path');
+const fs = require('fs');
 const { LucidLog } = require('lucid-log');
 
 let logger;
@@ -9,6 +10,28 @@ function getConfigFile(configPath) {
 		return require(path.join(configPath, 'config.json'));
 	} catch (e) {
 		return null;
+	}
+}
+
+function saveConfigFile(configPath, config) {
+	try {
+		const configFilePath = path.join(configPath, 'config.json');
+		// Read existing config to preserve other settings
+		let existingConfig = {};
+		try {
+			existingConfig = JSON.parse(fs.readFileSync(configFilePath, 'utf8'));
+		} catch (e) {
+			// File doesn't exist or is invalid, start fresh
+		}
+		// Merge with new config
+		const mergedConfig = { ...existingConfig, ...config };
+		fs.writeFileSync(configFilePath, JSON.stringify(mergedConfig, null, 2));
+		return true;
+	} catch (e) {
+		if (logger) {
+			logger.error('Failed to save config:', e);
+		}
+		return false;
 	}
 }
 
@@ -112,6 +135,11 @@ function argv(configPath) {
 				type: 'string',
 				choices: ['auto', 'visible', 'hidden']
 			},
+			tabbedMode: {
+				default: false,
+				describe: 'Enable tabbed interface - single window with tabs for multiple accounts',
+				type: 'boolean'
+			},
 			minimized: {
 				default: false,
 				describe: 'Start the application minimized',
@@ -155,3 +183,4 @@ function argv(configPath) {
 }
 
 exports = module.exports = argv;
+exports.saveConfigFile = saveConfigFile;

@@ -1,4 +1,4 @@
-const { app, ipcMain } = require('electron');
+const { app, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { LucidLog } = require('lucid-log');
 const isDev = require('electron-is-dev');
@@ -111,6 +111,10 @@ if (!gotTheLock) {
 	ipcMain.handle('toggle-auto-restore', handleToggleAutoRestore);
 	ipcMain.handle('set-account-display-name', handleSetAccountDisplayName);
 	ipcMain.handle('get-accounts', handleGetAccounts);
+
+	// Tabbed mode IPC handlers
+ipcMain.handle('switch-tab', handleSwitchTab);
+ipcMain.handle('close-tab', handleCloseTab);
 }
 
 // Global reference to account manager (set by mainAppWindow)
@@ -394,6 +398,46 @@ async function handleGetAccounts() {
 		return accountManager.getAllAccounts();
 	}
 	return [];
+}
+
+/**
+ * Handle switch tab request (tabbed mode)
+ * @param {*} event
+ * @param {string} tabId
+ */
+async function handleSwitchTab(_event, tabId) {
+	if (accountManager && accountManager.tabManager) {
+		accountManager.tabManager.switchTab(tabId);
+	}
+}
+
+/**
+ * Handle close tab request (tabbed mode)
+ * @param {*} event
+ * @param {string} tabId
+ */
+async function handleCloseTab(_event, tabId) {
+	if (!accountManager) return;
+
+	const account = accountManager.getAccount(tabId);
+	if (!account) return;
+
+	const label = account.email || account.displayName;
+
+	// Confirm before closing tab/removing account
+	const result = dialog.showMessageBoxSync({
+		type: 'warning',
+		buttons: ['Cancel', 'Close Tab'],
+		defaultId: 0,
+		cancelId: 0,
+		title: 'Close Tab',
+		message: `Close "${label}"?`,
+		detail: 'This will remove the account from the tab bar. You can add it again later.'
+	});
+
+	if (result === 1) {
+		accountManager.removeAccount(tabId);
+	}
 }
 
 // Export setAccountManager for use by mainAppWindow

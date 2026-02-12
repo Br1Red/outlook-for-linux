@@ -330,9 +330,9 @@
     undici-types "~5.25.1"
 
 "@types/node@^22.7.7":
-  version "22.19.7"
-  resolved "https://registry.yarnpkg.com/@types/node/-/node-22.19.7.tgz#434094ee1731ae76c16083008590a5835a8c39c1"
-  integrity sha512-MciR4AKGHWl7xwxkBa6xUGxQJ4VBOmPTF7sL+iGzuahOFaO0jHCsuEfS80pan1ef4gWId1oWOweIhrDEYLuaOw==
+  version "22.19.10"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-22.19.10.tgz#a802d3cc6bdc190ec2b0cbf6958bf127c0ec2926"
+  integrity sha512-tF5VOugLS/EuDlTBijk0MqABfP8UxgYazTLo3uIn3b4yJgg26QRbVYJYsDtHrjdDUIRfP70+VfhTTc+CE1yskw==
   dependencies:
     undici-types "~6.21.0"
 
@@ -1023,10 +1023,10 @@ electron-window-state@5.0.3:
     jsonfile "^4.0.0"
     mkdirp "^0.5.1"
 
-electron@39.3.0:
-  version "39.3.0"
-  resolved "https://registry.yarnpkg.com/electron/-/electron-39.3.0.tgz#e0f0dcf1d8bb630232886551a7bf9fa93db76cd1"
-  integrity sha512-ZA2Cmu5Vs8zeuZBr71XWZ5vgm7lRDB9N50oV6ee7YocITyxRxx/apWFKY48Sxyn0gzVlX+6YQc3CS1PtYIkGUg==
+electron@39.5.2:
+  version "39.5.2"
+  resolved "https://registry.yarnpkg.com/electron/-/electron-39.5.2.tgz#d8d0ebfbcb7d85b1c98ded5ba8c17b23198396c2"
+  integrity sha512-EiGFKoTjCuJTsdNxSwOiKJvRbWOFHTmqnnVftpUUZf7rdMkvM6yn9i55uLNDKefvTE69M+vfMgGLa7HuY94WZg==
   dependencies:
     "@electron/get" "^2.0.0"
     "@types/node" "^22.7.7"

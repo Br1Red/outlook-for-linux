@@ -1,4 +1,5 @@
-const { Tray, Menu, nativeImage, dialog, nativeTheme } = require('electron');
+const { Tray, Menu, nativeImage, dialog, nativeTheme, app } = require('electron');
+const { saveConfigFile } = require('../config');
 
 class ApplicationTray {
 	constructor(window, appMenu, iconPath, config) {
@@ -113,6 +114,16 @@ class ApplicationTray {
 
 		menu.push({ type: 'separator' });
 
+		// Tabbed mode toggle
+		menu.push({
+			label: 'Tabbed Mode',
+			type: 'checkbox',
+			checked: this.config.tabbedMode || false,
+			click: () => this.toggleTabbedMode()
+		});
+
+		menu.push({ type: 'separator' });
+
 		// About
 		menu.push({
 			label: 'About',
@@ -211,14 +222,20 @@ class ApplicationTray {
 				return;
 			}
 
-			// If window doesn't exist, create it
-			if (!account.window || account.window.isDestroyed()) {
-				console.log('[Tray] Creating window for account:', account.displayName);
-				this.accountManager.createAccountWindow(account);
+			// In tabbed mode, switch to the tab
+			if (this.accountManager.tabbedMode) {
+				console.log('[Tray] Switching to tab:', account.displayName);
+				this.accountManager.focusAccount(accountId);
 			} else {
-				// Show and focus existing window
-				account.window.show();
-				account.window.focus();
+				// Regular window mode
+				if (!account.window || account.window.isDestroyed()) {
+					console.log('[Tray] Creating window for account:', account.displayName);
+					this.accountManager.createAccountWindow(account);
+				} else {
+					// Show and focus existing window
+					account.window.show();
+					account.window.focus();
+				}
 			}
 		}
 	}
@@ -241,13 +258,16 @@ class ApplicationTray {
 		if (this.accountManager) {
 			const { BrowserWindow } = require('electron');
 
+			// In tabbed mode, use main tabbed window as parent
+			const parentWindow = this.accountManager.mainTabbedWindow || account.window || null;
+
 			// Create a simple input dialog
 			const inputDialog = new BrowserWindow({
 				width: 450,
 				height: account.manualDisplayName ? 260 : 240,
 				resizable: false,
-				modal: true,
-				parent: account.window || null,
+				modal: parentWindow !== null, // Only modal if we have a parent
+				parent: parentWindow,
 				show: false,
 				autoHideMenuBar: true,
 				webPreferences: {
@@ -417,6 +437,32 @@ class ApplicationTray {
 		if (this.accountManager) {
 			this.accountManager.createAccount();
 		}
+	}
+
+	/**
+	 * Toggle tabbed mode (requires restart)
+	 */
+	toggleTabbedMode() {
+		const { dialog } = require('electron');
+		const newValue = !this.config.tabbedMode;
+
+		// Update config
+		this.config.tabbedMode = newValue;
+
+		// Save to config file
+		saveConfigFile(app.getPath('userData'), { tabbedMode: newValue });
+
+		// Show restart dialog
+		dialog.showMessageBoxSync({
+			type: 'info',
+			buttons: ['OK'],
+			title: 'Tabbed Mode',
+			message: `Tabbed mode has been ${newValue ? 'enabled' : 'disabled'}.`,
+			detail: 'Please restart the application for this change to take effect.'
+		});
+
+		// Update menu to show new state
+		this.updateMenu();
 	}
 
 	/**

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="color-scheme" content="light dark">
+	<title>Outlook Tabs</title>
+	<style>
+		* {
+			box-sizing: border-box;
+			margin: 0;
+			padding: 0;
+		}
+
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+			background: transparent;
+		}
+
+		.tab-bar {
+			display: flex;
+			background: #f3f2f1;
+			border-bottom: 1px solid #0078d4;
+			height: 28px;
+			width: 100%;
+			user-select: none;
+		}
+
+		@media (prefers-color-scheme: dark) {
+			.tab-bar {
+				background: #1f1f1f;
+				border-bottom-color: #4a55a3;
+			}
+		}
+
+		.tab-list {
+			display: flex;
+			flex: 1;
+			gap: 0;
+			overflow-x: auto;
+			overflow-y: hidden;
+			flex: 1 1 auto;
+		}
+
+		.tab {
+			padding: 0 12px;
+			cursor: pointer;
+			border-right: 1px solid #0078d4;
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			background: transparent;
+			transition: background-color 0.15s ease;
+			min-width: 100px;
+			max-width: 180px;
+			height: 28px;
+			white-space: nowrap;
+		}
+
+		@media (prefers-color-scheme: dark) {
+			.tab {
+				border-right-color: #4a55a3;
+			}
+		}
+
+		.tab:hover {
+			background: rgba(0, 120, 212, 0.1);
+		}
+
+		.tab.active {
+			background: #0078d4;
+			color: white;
+		}
+
+		.tab-icon {
+			width: 14px;
+			height: 14px;
+			border-radius: 50%;
+			background: rgba(100, 100, 100, 0.3);
+			border: 1px solid rgba(100, 100, 100, 0.2);
+			flex-shrink: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+
+		@media (prefers-color-scheme: dark) {
+			.tab-icon {
+				background: rgba(255, 255, 255, 0.2);
+			}
+		}
+
+		.tab.active .tab-icon {
+			background: rgba(255, 255, 255, 0.3);
+		}
+
+		.tab-name {
+			font-size: 13px;
+			font-weight: 500;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.tab-close {
+			width: 20px;
+			height: 20px;
+			border-radius: 50%;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			margin-left: 4px;
+			opacity: 0;
+			transition: opacity 0.15s ease;
+			cursor: pointer;
+		}
+
+		.tab-close:hover {
+			background: rgba(255, 255, 255, 0.15);
+		}
+
+		.tab:hover .tab-close {
+			opacity: 1;
+		}
+
+		.tab.active .tab-close {
+			opacity: 1;
+		}
+
+		.tab-badge {
+			background: #d13438;
+			color: white;
+			font-size: 10px;
+			font-weight: 600;
+			padding: 2px 6px;
+			border-radius: 10px;
+			min-width: 16px;
+			text-align: center;
+		}
+
+		@media (prefers-color-scheme: dark) {
+			.tab-badge {
+				background: #ff6b6b;
+			}
+		}
+
+		.close-icon {
+			width: 12px;
+			height: 12px;
+		}
+	</style>
+</head>
+<body>
+	<div class="tab-bar">
+		<div class="tab-list" id="tabList">
+			<!-- Tabs will be injected here -->
+		</div>
+	</div>
+
+	<script>
+		// This script runs in renderer context
+		// Functions are exposed by preload script
+		console.log('[TabBar UI] Renderer initialized');
+	</script>
+</body>
+</html>
