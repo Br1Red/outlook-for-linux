@@ -600,6 +600,19 @@ class ApplicationTray {
 		if (this.accountManager) {
 			const accounts = this.accountManager.getAllAccounts();
 
+			// In tabbed mode, show main tabbed window directly
+			if (this.accountManager.tabbedMode && this.accountManager.mainTabbedWindow) {
+				const mainWin = this.accountManager.mainTabbedWindow;
+				if (!mainWin.isDestroyed()) {
+					if (mainWin.isMinimized()) {
+						mainWin.restore();
+					}
+					mainWin.show();
+					mainWin.focus();
+				}
+				return;
+			}
+
 			// If only one account, just show it
 			if (accounts.length === 1) {
 				this.focusAccount(accounts[0].id);
