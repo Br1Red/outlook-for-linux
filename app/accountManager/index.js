@@ -490,8 +490,27 @@ class AccountManager {
 
 		// Add context menu (right-click)
 		window.webContents.on('context-menu', (event, params) => {
-			const { Menu, MenuItem } = require('electron');
+			const { Menu, MenuItem, clipboard, shell } = require('electron');
 			const menu = new Menu();
+
+            // --- Link-specific context menu ---
+            if (params.linkURL) {
+                menu.append(new MenuItem({
+                    label: 'Open Link in Browser',
+                    click: () => {
+                        shell.openExternal(params.linkURL);
+                    }
+                }));
+
+                menu.append(new MenuItem({
+                    label: 'Copy Link',
+                    click: () => {
+                        clipboard.writeText(params.linkURL);
+                    }
+                }));
+
+                menu.append(new MenuItem({ type: 'separator' }));
+            }
 
 			// Add "Reload Page" option
 			menu.append(new MenuItem({

@@ -1,7 +1,7 @@
 console.log('[Preload] Script starting...');
 
 (async function () {
-	const {ipcRenderer} = require('electron');
+	const {ipcRenderer, shell} = require('electron');
 
 	console.log('[Preload] Inside IIFE, getting config...');
 
@@ -61,6 +61,25 @@ console.log('[Preload] Script starting...');
 			return Promise.reject();
 		}
 	});
+
+    // ------------------------------------------------------------
+    // Ctrl+Click on links => Open in default system browser
+    // Normal click behavior is intentionally untouched
+    // ------------------------------------------------------------
+    document.addEventListener('click', (event) => {
+        if (!event.ctrlKey) return;
+
+        const anchor = event.target.closest('a[href]');
+        if (!anchor) return;
+
+        const url = anchor.href;
+        if (!url || !url.startsWith('http')) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        shell.openExternal(url);
+    }, true);
 
 	// Keep the CustomNotification class for sound playback
 	class CustomNotification {
