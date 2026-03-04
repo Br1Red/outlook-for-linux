@@ -488,6 +488,15 @@ class AccountManager {
 			this.focusedAccountId = account.id;
 		});
 
+		// ------------------------------------------------------------
+		// Hovered link URL forwarding (no settings)
+		// ------------------------------------------------------------
+		window.webContents.on('update-target-url', (_event, url) => {
+		    window.webContents.send('hover-link-url', {
+		        url: url || ''
+		    });
+		});
+
 		// Add context menu (right-click)
 		window.webContents.on('context-menu', (event, params) => {
 			const { Menu, MenuItem, clipboard, shell } = require('electron');

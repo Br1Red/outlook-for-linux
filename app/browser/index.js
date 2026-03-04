@@ -1,7 +1,7 @@
 console.log('[Preload] Script starting...');
 
 (async function () {
-	const {ipcRenderer, shell} = require('electron');
+	const {ipcRenderer, shell, contextBridge, clipboard} = require('electron');
 
 	console.log('[Preload] Inside IIFE, getting config...');
 
@@ -113,6 +113,17 @@ console.log('[Preload] Script starting...');
 
 	window.Notification = CustomNotification;
 }());
+
+// ------------------------------------------------------------
+// Link preview (hover tooltip / status bar)
+// ------------------------------------------------------------
+contextBridge.exposeInMainWorld('linkPreview', {
+    onHover: (callback) => {
+        ipcRenderer.on('hover-link-url', (_, payload) => {
+            callback(payload);
+        });
+    },
+});
 
 /**
  * Initialize MutationObserver to intercept Outlook notification elements
