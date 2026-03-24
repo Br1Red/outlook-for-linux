@@ -205,6 +205,10 @@ class AccountManager {
 		const mainWindow = new BrowserWindow({
 			width: 1400,
 			height: 900,
+			// Explicit WM_CLASS on X11 so desktop file matching is unambiguous
+			// (helps some panels/tray hosts avoid cross-app identity collisions).
+			// Should match StartupWMClass in the generated .desktop entry.
+			x11Class: 'outlook-for-linux',
 			backgroundColor: nativeTheme.shouldUseDarkColors ? '#302a75' : '#ffffff',
 			show: false,
 			autoHideMenuBar: this.config.menubar === 'auto',
@@ -411,6 +415,7 @@ class AccountManager {
 
 		const window = new BrowserWindow({
 			title: `Microsoft Outlook - ${account.displayName}`,
+			x11Class: 'outlook-for-linux',
 			x: windowState.x,
 			y: windowState.y,
 			width: windowState.width,
