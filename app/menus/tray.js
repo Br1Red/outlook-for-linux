@@ -1,5 +1,8 @@
 const { Tray, Menu, nativeImage, dialog, nativeTheme, app } = require('electron');
 const { saveConfigFile } = require('../config');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 class ApplicationTray {
 	constructor(window, appMenu, iconPath, config) {
@@ -24,6 +27,7 @@ class ApplicationTray {
 		 */
 		this.lastBadgeCount = null;
 		this.lastBadgeType = null;
+		this.baseTrayImage = null;
 		this.addTray();
 	}
 
@@ -37,7 +41,28 @@ class ApplicationTray {
 	}
 
 	addTray() {
-		this.tray = new Tray(this.iconPath);
+
+        // Use NativeImage instead of a string path to reduce icon-name / theme caching
+        // quirks in AppIndicator / StatusNotifierItem hosts (common on some DE panels).
+        let iconPathToUse = this.iconPath;
+        try {
+            const uniqueIconPath = path.join(
+                os.tmpdir(),
+                `outlook-for-linux-tray-${process.pid}-${path.basename(this.iconPath)}`
+            );
+            fs.copyFileSync(this.iconPath, uniqueIconPath);
+            iconPathToUse = uniqueIconPath;
+        } catch (_) {
+            // Best-effort only; fall back to original path.
+        }
+
+        const base = nativeImage.createFromPath(iconPathToUse);
+        const trayImage = (base && !base.isEmpty && typeof base.resize === 'function')
+            ? base.resize({ width: 24, height: 24 })
+            : base;
+
+	    this.baseTrayImage = trayImage;
+        this.tray = new Tray(trayImage);
 		this.tray.setToolTip('Microsoft Outlook');
 		this.tray.on('click', () => this.showAndFocusWindow());
 		this.tray.setContextMenu(Menu.buildFromTemplate(this.buildMenu()));
@@ -493,6 +518,7 @@ class ApplicationTray {
 		dialog.showMessageBoxSync(targetWindow || null, {
 			buttons: ['OK'],
 			title: 'About',
+			icon: this.iconPath,
 			defaultId: 0,
 			cancelId: 0,
 			message: appInfo.join('\n'),
@@ -591,7 +617,7 @@ class ApplicationTray {
 			}
 		} else {
 			// Reset to original icon
-			this.tray.setImage(this.iconPath);
+		    this.tray.setImage(this.baseTrayImage || nativeImage.createFromPath(this.iconPath));
 			this.tray.setToolTip('Microsoft Outlook');
 		}
 	}

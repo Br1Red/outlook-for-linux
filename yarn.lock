@@ -1023,10 +1023,10 @@ electron-window-state@5.0.3:
     jsonfile "^4.0.0"
     mkdirp "^0.5.1"
 
-electron@40.4.0:
-  version "40.4.0"
-  resolved "https://registry.yarnpkg.com/electron/-/electron-40.4.0.tgz#e2e73d837df141216dcd91fb6c3f754e771387c2"
-  integrity sha512-31l4V7Ys4oUuXyaN/cCNnyBdDXN9RwOVOG+JhiHCf4zx5tZkHd43PKGY6KLEWpeYCxaphsuGSEjagJLfPqKj8g==
+electron@^40.7.0:
+  version "40.8.0"
+  resolved "https://registry.yarnpkg.com/electron/-/electron-40.8.0.tgz#d149210300bf7df95e5d3db4a40d388e12ef7549"
+  integrity sha512-WoPq0Nr9Yx3g7T6VnJXdwa/rr2+VRyH3a+K+ezfMKBlf6WjxE/LmhMQabKbb6yjm9RbZhJBRcYyoLph421O2mQ==
   dependencies:
     "@electron/get" "^2.0.0"
     "@types/node" "^24.9.0"

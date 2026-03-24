@@ -4,10 +4,17 @@ const { LucidLog } = require('lucid-log');
 const isDev = require('electron-is-dev');
 
 // Set app name for notifications BEFORE anything else
-app.name = 'Microsoft Outlook';
+// Linux: prefer a stable unique runtime identity to reduce tray/SNI collisions.
+// Keep the human-facing name in window titles / .desktop Name instead.
+if (process.platform === 'linux') {
+  app.setName('outlook-for-linux');
+} else {
+  app.setName('Microsoft Outlook');
+}
+
 // Set desktop name to match the .desktop file for notification persistence
 if (process.platform === 'linux') {
-	app.setDesktopName('outlook-for-linux.desktop');
+	app.setDesktopName('outlook-for-linux');
 }
 
 if (app.commandLine.hasSwitch('customUserDir')) {

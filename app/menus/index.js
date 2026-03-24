@@ -224,6 +224,7 @@ class Menus {
 		dialog.showMessageBoxSync(targetWindow || null, {
 			buttons: ['OK'],
 			title: 'About',
+			icon: this.iconPath,
 			normalizeAccessKeys: true,
 			defaultId: 0,
 			cancelId: 0,
