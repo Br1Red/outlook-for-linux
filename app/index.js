@@ -1,4 +1,4 @@
-const { app, ipcMain, dialog } = require('electron');
+const { app, ipcMain, dialog, globalShortcut } = require('electron');
 const path = require('path');
 const { LucidLog } = require('lucid-log');
 const isDev = require('electron-is-dev');
@@ -46,7 +46,7 @@ const certificateModule = require('./certificate');
 const notificationModule = require('./notification');
 const gotTheLock = app.requestSingleInstanceLock();
 const mainAppWindow = require('./mainAppWindow');
-const AccountManager = require('./accountManager');
+const QuickCompose = require('./quickCompose');
 
 if (config.proxyServer) app.commandLine.appendSwitch('proxy-server', config.proxyServer);
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
@@ -113,15 +113,33 @@ if (!gotTheLock) {
 	ipcMain.handle('get-accounts', handleGetAccounts);
 
 	// Tabbed mode IPC handlers
-ipcMain.handle('switch-tab', handleSwitchTab);
-ipcMain.handle('close-tab', handleCloseTab);
+	ipcMain.handle('switch-tab', handleSwitchTab);
+	ipcMain.handle('close-tab', handleCloseTab);
+
+	// Quick Compose IPC handlers
+	ipcMain.handle('open-quick-compose', handleOpenQuickCompose);
+	ipcMain.handle('send-quick-compose', handleSendQuickCompose);
 }
 
 // Global reference to account manager (set by mainAppWindow)
 let accountManager = null;
 
+// Global reference to quick compose module
+let quickCompose = null;
+
 function setAccountManager(am) {
 	accountManager = am;
+	// Initialize quick compose after account manager is set
+	quickCompose = new QuickCompose(accountManager, config);
+
+	// Register global shortcut for quick compose (Ctrl+Shift+N)
+	// Common email app shortcut
+	globalShortcut.register('CommandOrControl+Shift+N', () => {
+		if (quickCompose) {
+			quickCompose.openDialog();
+		}
+	});
+	logger.info('Registered global shortcut: Ctrl+Shift+N for Quick Compose');
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -288,7 +306,7 @@ async function handleShowReminderNotification(event, notification) {
  * @param {{accountId: string|null, count: number}} data
  */
 async function handleUpdateUnreadCount(event, data) {
-	console.log(`[Main] Unread count updated:`, data);
+	console.log('[Main] Unread count updated:', data);
 	const count = typeof data === 'number' ? data : data.count;
 	const accountId = typeof data === 'object' && data.accountId ? data.accountId : null;
 
@@ -306,7 +324,7 @@ async function handleUpdateUnreadCount(event, data) {
  * @param {{accountId: string|null, count: number}} data
  */
 async function handleUpdateReminderCount(event, data) {
-	console.log(`[Main] Reminder count updated:`, data);
+	console.log('[Main] Reminder count updated:', data);
 	const count = typeof data === 'number' ? data : data.count;
 	const accountId = typeof data === 'object' && data.accountId ? data.accountId : null;
 
@@ -438,6 +456,39 @@ async function handleCloseTab(_event, tabId) {
 	if (result === 1) {
 		accountManager.removeAccount(tabId);
 	}
+}
+
+/**
+ * Handle open quick compose request
+ * @param {*} event
+ * @param {string} [accountId] - Optional account ID to use
+ */
+async function handleOpenQuickCompose(_event, accountId) {
+	if (!quickCompose) {
+		logger.warn('QuickCompose module not initialized');
+		return;
+	}
+	quickCompose.openDialog(accountId);
+}
+
+/**
+ * Handle send quick compose request (send email directly)
+ * @param {*} event
+ * @param {{to: string, subject: string, body: string, accountId: string}} data
+ */
+async function handleSendQuickCompose(_event, data) {
+	if (!quickCompose) {
+		logger.warn('QuickCompose module not initialized');
+		return;
+	}
+
+	// For now, just open the compose dialog
+	// TODO: Implement direct send via mailto link or API
+	const mailtoLink = `mailto:${data.to || ''}?subject=${encodeURIComponent(data.subject || '')}&body=${encodeURIComponent(data.body || '')}`;
+	logger.info(`Opening mailto link: ${mailtoLink}`);
+
+	const { shell } = require('electron');
+	shell.openExternal(mailtoLink);
 }
 
 // Export setAccountManager for use by mainAppWindow

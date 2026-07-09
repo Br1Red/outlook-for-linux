@@ -1,5 +1,6 @@
 const { Notification, BrowserWindow, app } = require('electron');
 const path = require('path');
+const dndManager = require('../utils/dnd');
 
 /**
  * @typedef {Object} ReminderNotification
@@ -144,6 +145,12 @@ function reset() {
 function showReminderNotification(notification) {
 	if (!notification) return;
 
+	// Check DND before showing notification
+	if (dndManager.isDNDActive()) {
+		console.log('[Notification] DND active - suppressing reminder notification');
+		return;
+	}
+
 	// Check if same notification already exists
 	if (!reminders.find(r => r.subject === notification.subject && r.timeUntil === notification.timeUntil)) {
 		reminders.push(notification);
@@ -235,6 +242,12 @@ function getSenderName(address) {
 function showEmailNotification(notification) {
     console.log('[Notification Module] showEmailNotification called:', notification);
     if (!notification) return;
+
+    // Check DND before showing notification
+    if (dndManager.isDNDActive()) {
+        console.log('[Notification] DND active - suppressing email notification');
+        return;
+    }
 
     // Check if same notification already exists (compare by sender name + subject)
     const senderName = getSenderName(notification.address);

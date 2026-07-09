@@ -1,5 +1,6 @@
 const { Tray, Menu, nativeImage, dialog, nativeTheme, app } = require('electron');
 const { saveConfigFile } = require('../config');
+const dndManager = require('../utils/dnd');
 
 class ApplicationTray {
 	constructor(window, appMenu, iconPath, config) {
@@ -14,6 +15,10 @@ class ApplicationTray {
 		 * @type {AccountManager|null}
 		 */
 		this.accountManager = null;
+		/**
+		 * @type {QuickCompose|null}
+		 */
+		this.quickCompose = null;
 		/**
 		 * Cache to prevent unnecessary menu rebuilds
 		 */
@@ -36,6 +41,14 @@ class ApplicationTray {
 		this.updateMenu();
 	}
 
+	/**
+	 * Set the quick compose reference
+	 * @param {QuickCompose} quickCompose
+	 */
+	setQuickCompose(quickCompose) {
+		this.quickCompose = quickCompose;
+	}
+
 	addTray() {
 		this.tray = new Tray(this.iconPath);
 		this.tray.setToolTip('Microsoft Outlook');
@@ -50,7 +63,15 @@ class ApplicationTray {
 	buildMenu() {
 		const menu = [];
 
-			// Open
+		// New Message (Quick Compose)
+		menu.push({
+			label: 'New Message',
+			click: () => this.openQuickCompose()
+		});
+
+		menu.push({ type: 'separator' });
+
+		// Open
 		menu.push({
 			label: 'Open',
 			click: () => this.showAllWindows()
@@ -120,6 +141,14 @@ class ApplicationTray {
 			type: 'checkbox',
 			checked: this.config.tabbedMode || false,
 			click: () => this.toggleTabbedMode()
+		});
+
+		// Do Not Disturb toggle
+		menu.push({
+			label: 'Do Not Disturb',
+			type: 'checkbox',
+			checked: dndManager.manualDND,
+			click: () => this.toggleDND()
 		});
 
 		menu.push({ type: 'separator' });
@@ -466,6 +495,25 @@ class ApplicationTray {
 	}
 
 	/**
+	 * Toggle Do Not Disturb mode
+	 */
+	toggleDND() {
+		const newState = dndManager.toggleManualDND();
+
+		// Show brief notification
+		const { Notification } = require('electron');
+		const status = newState ? 'enabled' : 'disabled';
+		new Notification({
+			title: `Do Not Disturb ${status}`,
+			body: newState ? 'Notifications will be suppressed' : 'Notifications will resume',
+			silent: true
+		}).show();
+
+		// Update menu to show new state
+		this.updateMenu();
+	}
+
+	/**
 	 * Show About dialog
 	 */
 	showAbout() {
@@ -755,6 +803,17 @@ class ApplicationTray {
 			selectDialog.show();
 			selectDialog.focus();
 		});
+	}
+
+	/**
+	 * Open quick compose dialog
+	 */
+	openQuickCompose() {
+		if (this.quickCompose) {
+			// If in multi-account mode, pass the focused account
+			const accountId = this.accountManager?.focusedAccountId || null;
+			this.quickCompose.openDialog(accountId);
+		}
 	}
 
 	close() {

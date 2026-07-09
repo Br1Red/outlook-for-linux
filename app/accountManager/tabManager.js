@@ -85,9 +85,16 @@ class TabManager {
 		// Get the webContents from the BrowserView
 		const tabWebContents = browserView.webContents;
 
-		// Set session for focus management
-		tabWebContents.once('did-start-loading', () => {
-			tabWebContents.setWindowOpenHandler({ action: 'deny' });
+		// Handle opening links in external browser
+		tabWebContents.setWindowOpenHandler(({ url }) => {
+			const { shell } = require('electron');
+			shell.openExternal(url);
+			return { action: 'deny' };
+		});
+
+		// Add context menu (right-click) for this tab
+		tabWebContents.on('context-menu', (event, params) => {
+			this.showContextMenu(tabWebContents, params);
 		});
 
 		// Listen for scale factor changes (when moving to monitors with different DPI)
@@ -304,6 +311,71 @@ class TabManager {
 	 */
 	getTab(accountId) {
 		return this.tabs.get(accountId);
+	}
+
+	/**
+	 * Show context menu for a tab
+	 * @param {Electron.WebContents} webContents
+	 * @param {Object} params
+	 */
+	showContextMenu(webContents, params) {
+		const { Menu, MenuItem } = require('electron');
+		const menu = new Menu();
+
+		// Add "Reload Page" option
+		menu.append(new MenuItem({
+			label: 'Reload Page',
+			accelerator: 'Ctrl+R',
+			click: () => {
+				webContents.reload();
+			}
+		}));
+
+		// Add "Go to Home" option
+		menu.append(new MenuItem({
+			label: 'Go to Home',
+			accelerator: 'Ctrl+Home',
+			click: () => {
+				webContents.loadURL(this.config.url);
+			}
+		}));
+
+		menu.append(new MenuItem({ type: 'separator' }));
+
+		// Standard context menu items (if text is selected or in an input field)
+		if (params.isEditable || params.selectionText) {
+			if (params.misspelledWord) {
+				menu.append(new MenuItem({
+					label: 'Add to Dictionary',
+					click: () => {
+						webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord);
+					}
+				}));
+				menu.append(new MenuItem({ type: 'separator' }));
+			}
+
+			if (params.isEditable) {
+				menu.append(new MenuItem({ label: 'Cut', role: 'cut' }));
+				menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+				menu.append(new MenuItem({ label: 'Paste', role: 'paste' }));
+			} else if (params.selectionText) {
+				menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+			}
+
+			menu.append(new MenuItem({ type: 'separator' }));
+		}
+
+		// Add "Inspect Element" for debugging
+		if (this.config.webDebug) {
+			menu.append(new MenuItem({
+				label: 'Inspect Element',
+				click: () => {
+					webContents.inspectElement(params.x, params.y);
+				}
+			}));
+		}
+
+		menu.popup({ window: this.mainWindow });
 	}
 
 	/**

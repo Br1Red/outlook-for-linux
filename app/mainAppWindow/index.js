@@ -8,6 +8,7 @@ const TrayIconChooser = require('../browser/tools/trayIconChooser');
 // eslint-disable-next-line no-unused-vars
 const { AppConfiguration } = require('../appConfiguration');
 const notificationModule = require('../notification');
+const QuickCompose = require('../quickCompose');
 
 /**
  * @type {TrayIconChooser}
@@ -32,6 +33,11 @@ let config;
 let accountManager;
 
 /**
+ * @type {QuickCompose}
+ */
+let quickCompose;
+
+/**
  * @param {AppConfiguration} mainConfig
  */
 exports.onAppReady = async function onAppReady(mainConfig) {
@@ -50,6 +56,23 @@ exports.onAppReady = async function onAppReady(mainConfig) {
 	// Create account manager
 	const accMgr = new AccountManager(config, iconChooser.getFile(), menus, mainConfig);
 
+	// Create quick compose instance
+	const qCompose = new QuickCompose(accMgr, config);
+
+	// Set as global reference for IPC handlers
+	mainApp.setAccountManager(accMgr);
+
+	// Initialize notification module (will be called by each account window)
+	notificationModule.init(null, iconChooser.getFile(), menus);
+
+	// Wire up quick compose to menus
+	if (menus.tray) {
+		menus.tray.setQuickCompose(qCompose);
+	}
+	if (menus.setQuickCompose) {
+		menus.setQuickCompose(qCompose);
+	}
+
 	// Set as global reference for IPC handlers
 	mainApp.setAccountManager(accMgr);
 
@@ -59,7 +82,9 @@ exports.onAppReady = async function onAppReady(mainConfig) {
 	// Store references for other functions
 	// Store in module-level variable for access from event handlers (which lose 'this' context)
 	accountManager = accMgr;
+	quickCompose = qCompose;
 	this.accountManager = accMgr;
+	this.quickCompose = qCompose;
 	this.menus = menus;
 
 	// Restore saved accounts (or create default if none exist)

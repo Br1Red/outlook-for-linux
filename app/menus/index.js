@@ -22,6 +22,10 @@ class Menus {
 		 * @type {AccountManager|null}
 		 */
 		this.accountManager = null;
+		/**
+		 * @type {QuickCompose|null}
+		 */
+		this.quickCompose = null;
 		this.logger = new LucidLog({
 			levels: config.appLogLevels.split(',')
 		});
@@ -35,6 +39,29 @@ class Menus {
 	setAccountManager(accountManager) {
 		this.accountManager = accountManager;
 		this.updateTrayMenu();
+	}
+
+	/**
+	 * Set quick compose reference
+	 * @param {QuickCompose} quickCompose
+	 */
+	setQuickCompose(quickCompose) {
+		this.quickCompose = quickCompose;
+		// Also set on tray if it exists
+		if (this.tray && this.tray.setQuickCompose) {
+			this.tray.setQuickCompose(quickCompose);
+		}
+	}
+
+	/**
+	 * Open quick compose dialog
+	 */
+	openQuickCompose() {
+		if (this.quickCompose) {
+			// Use focused account or first available
+			const accountId = this.accountManager?.focusedAccountId || null;
+			this.quickCompose.openDialog(accountId);
+		}
 	}
 
 	/**
