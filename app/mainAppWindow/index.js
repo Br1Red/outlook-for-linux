@@ -1,14 +1,14 @@
-require('@electron/remote/main').initialize();
-const { BrowserWindow, nativeTheme } = require('electron');
+require("@electron/remote/main").initialize();
+const { BrowserWindow, nativeTheme } = require("electron");
 const isDarkMode = nativeTheme.shouldUseDarkColors;
-const path = require('path');
-const Menus = require('../menus');
-const { LucidLog } = require('lucid-log');
-const TrayIconChooser = require('../browser/tools/trayIconChooser');
+const path = require("path");
+const Menus = require("../menus");
+const { LucidLog } = require("lucid-log");
+const TrayIconChooser = require("../browser/tools/trayIconChooser");
 // eslint-disable-next-line no-unused-vars
-const { AppConfiguration } = require('../appConfiguration');
-const notificationModule = require('../notification');
-const QuickCompose = require('../quickCompose');
+const { AppConfiguration } = require("../appConfiguration");
+const notificationModule = require("../notification");
+const QuickCompose = require("../quickCompose");
 
 /**
  * @type {TrayIconChooser}
@@ -33,28 +33,28 @@ let config;
 let accountManager;
 
 /**
- * @type {QuickCompose}
- */
-let quickCompose;
-
-/**
  * @param {AppConfiguration} mainConfig
  */
 exports.onAppReady = async function onAppReady(mainConfig) {
-	const AccountManager = require('../accountManager');
-	const mainApp = require('../index');
+	const AccountManager = require("../accountManager");
+	const mainApp = require("../index");
 
 	config = mainConfig.startupConfig;
 	iconChooser = new TrayIconChooser(mainConfig.startupConfig);
 	logger = new LucidLog({
-		levels: config.appLogLevels.split(',')
+		levels: config.appLogLevels.split(","),
 	});
 
 	// Create menus instance (will be shared across all accounts)
 	const menus = new Menus(null, config, iconChooser.getFile(), mainConfig);
 
 	// Create account manager
-	const accMgr = new AccountManager(config, iconChooser.getFile(), menus, mainConfig);
+	const accMgr = new AccountManager(
+		config,
+		iconChooser.getFile(),
+		menus,
+		mainConfig,
+	);
 
 	// Create quick compose instance
 	const qCompose = new QuickCompose(accMgr, config);
@@ -82,7 +82,6 @@ exports.onAppReady = async function onAppReady(mainConfig) {
 	// Store references for other functions
 	// Store in module-level variable for access from event handlers (which lose 'this' context)
 	accountManager = accMgr;
-	quickCompose = qCompose;
 	this.accountManager = accMgr;
 	this.quickCompose = qCompose;
 	this.menus = menus;
@@ -114,13 +113,15 @@ exports.onAppReady = async function onAppReady(mainConfig) {
 let allowFurtherRequests = true;
 
 exports.onAppSecondInstance = async function onAppSecondInstance(event, args) {
-	logger.debug('second-instance started');
+	logger.debug("second-instance started");
 	event.preventDefault();
 
 	const result = processArgs(args);
 	if (result && allowFurtherRequests) {
 		allowFurtherRequests = false;
-		setTimeout(() => { allowFurtherRequests = true; }, 5000);
+		setTimeout(() => {
+			allowFurtherRequests = true;
+		}, 5000);
 
 		if (result.isMailto) {
 			// Open mailto links in new compose window
@@ -128,9 +129,13 @@ exports.onAppSecondInstance = async function onAppSecondInstance(event, args) {
 		} else {
 			// For other URLs, load in the first available account window
 			const accounts = accountManager?.getAllAccounts() || [];
-			const firstAccount = accounts.find(a => a.window && !a.window.isDestroyed());
+			const firstAccount = accounts.find(
+				(a) => a.window && !a.window.isDestroyed(),
+			);
 			if (firstAccount) {
-				firstAccount.window.loadURL(result.url, { userAgent: config.chromeUserAgent });
+				firstAccount.window.loadURL(result.url, {
+					userAgent: config.chromeUserAgent,
+				});
 				firstAccount.window.show();
 				firstAccount.window.focus();
 			}
@@ -144,11 +149,11 @@ exports.onAppSecondInstance = async function onAppSecondInstance(event, args) {
 };
 
 // Export functions for external access
-exports.getAccountManager = function() {
+exports.getAccountManager = function () {
 	return this.accountManager;
 };
 
-exports.getMenus = function() {
+exports.getMenus = function () {
 	return this.menus;
 };
 
@@ -157,23 +162,27 @@ exports.getMenus = function() {
 // - restoreWindow (no longer needed)
 
 function processArgs(args) {
-	var regHttps = /^https:\/\/outlook.microsoft.com\/l\/(meetup-join|channel)\//g;
+	var regHttps =
+		/^https:\/\/outlook.microsoft.com\/l\/(meetup-join|channel)\//g;
 	var regMS = /^msoutlook:\/l\/(meetup-join|channel)\//g;
 	var regMailto = /^mailto:/i;
-	logger.debug('processArgs:', args);
+	logger.debug("processArgs:", args);
 	for (const arg of args) {
 		if (regHttps.test(arg)) {
-			logger.debug('A url argument received with https protocol');
+			logger.debug("A url argument received with https protocol");
 			// Note: window.show() removed - window is null in multi-account mode
 			return { url: arg, isMailto: false };
 		}
 		if (regMS.test(arg)) {
-			logger.debug('A url argument received with msoutlook protocol');
+			logger.debug("A url argument received with msoutlook protocol");
 			// Note: window.show() removed - window is null in multi-account mode
-			return { url: config.url + arg.substring(8, arg.length), isMailto: false };
+			return {
+				url: config.url + arg.substring(8, arg.length),
+				isMailto: false,
+			};
 		}
 		if (regMailto.test(arg)) {
-			logger.debug('A mailto argument received');
+			logger.debug("A mailto argument received");
 			// Note: window.show() removed - window is null in multi-account mode
 			// Convert mailto: URL to Outlook compose URL
 			return { url: convertMailtoToOutlookURL(arg), isMailto: true };
@@ -188,7 +197,7 @@ function processArgs(args) {
  */
 function showAccountSelectionDialog(accountManager) {
 	return new Promise((resolve) => {
-		const { BrowserWindow, ipcMain } = require('electron');
+		const { BrowserWindow, ipcMain } = require("electron");
 		const accounts = accountManager.getAllAccounts();
 		if (accounts.length === 0) {
 			resolve(null);
@@ -201,7 +210,7 @@ function showAccountSelectionDialog(accountManager) {
 		// Calculate height based on number of accounts
 		const baseHeight = 140;
 		const accountHeight = 45;
-		const height = Math.min(baseHeight + (accounts.length * accountHeight), 500);
+		const height = Math.min(baseHeight + accounts.length * accountHeight, 500);
 
 		// Create selection dialog - same pattern as tray dialog (modal: false, no parent)
 		const selectDialog = new BrowserWindow({
@@ -211,35 +220,40 @@ function showAccountSelectionDialog(accountManager) {
 			modal: false,
 			show: false,
 			autoHideMenuBar: true,
-			title: 'Select Account',
-			backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
+			title: "Select Account",
+			backgroundColor: isDarkMode ? "#1e1e1e" : "#ffffff",
 			webPreferences: {
 				nodeIntegration: true,
-				contextIsolation: false
-			}
+				contextIsolation: false,
+			},
 		});
 
 		// Build account buttons HTML
-		const accountButtons = accounts.map(a =>
-			`<button class="account-btn" data-id="${a.id}">${a.displayName}</button>`
-		).join('');
+		const accountButtons = accounts
+			.map(
+				(a) =>
+					`<button class="account-btn" data-id="${a.id}">${a.displayName}</button>`,
+			)
+			.join("");
 
-		selectDialog.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`
+		selectDialog.loadURL(
+			"data:text/html;charset=utf-8," +
+				encodeURIComponent(`
 			<!DOCTYPE html>
 			<html>
 			<head>
-				<meta name="color-scheme" content="${isDarkMode ? 'dark' : 'light'}">
+				<meta name="color-scheme" content="${isDarkMode ? "dark" : "light"}">
 				<style>
 					* { box-sizing: border-box; }
 					body {
 						font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 						padding: 20px;
 						margin: 0;
-						background-color: ${isDarkMode ? '#1e1e1e' : '#ffffff'};
-						color: ${isDarkMode ? '#e0e0e0' : '#000000'};
+						background-color: ${isDarkMode ? "#1e1e1e" : "#ffffff"};
+						color: ${isDarkMode ? "#e0e0e0" : "#000000"};
 					}
 					h2 { margin: 0 0 10px 0; font-size: 18px; }
-					p { margin: 5px 0 15px 0; font-size: 14px; color: ${isDarkMode ? '#aaa' : '#666'}; }
+					p { margin: 5px 0 15px 0; font-size: 14px; color: ${isDarkMode ? "#aaa" : "#666"}; }
 					.account-list {
 						display: flex;
 						flex-direction: column;
@@ -250,15 +264,15 @@ function showAccountSelectionDialog(accountManager) {
 					.account-btn {
 						padding: 12px;
 						text-align: left;
-						background: ${isDarkMode ? '#2d2d2d' : '#f5f5f5'};
-						border: 1px solid ${isDarkMode ? '#444' : '#ddd'};
+						background: ${isDarkMode ? "#2d2d2d" : "#f5f5f5"};
+						border: 1px solid ${isDarkMode ? "#444" : "#ddd"};
 						border-radius: 4px;
 						cursor: pointer;
 						font-size: 14px;
-						color: ${isDarkMode ? '#e0e0e0' : '#000000'};
+						color: ${isDarkMode ? "#e0e0e0" : "#000000"};
 					}
 					.account-btn:hover {
-						background: ${isDarkMode ? '#3a3a3a' : '#e5e5e5'};
+						background: ${isDarkMode ? "#3a3a3a" : "#e5e5e5"};
 					}
 				</style>
 			</head>
@@ -280,21 +294,22 @@ function showAccountSelectionDialog(accountManager) {
 				</script>
 			</body>
 			</html>
-		`));
+		`),
+		);
 
 		const handler = (_event, accountId) => {
 			resolve(accountId || null);
-			ipcMain.removeListener('mailto-account-selected', handler);
+			ipcMain.removeListener("mailto-account-selected", handler);
 		};
 
-		ipcMain.once('mailto-account-selected', handler);
+		ipcMain.once("mailto-account-selected", handler);
 
-		selectDialog.on('closed', () => {
-			ipcMain.removeListener('mailto-account-selected', handler);
+		selectDialog.on("closed", () => {
+			ipcMain.removeListener("mailto-account-selected", handler);
 			resolve(null);
 		});
 
-		selectDialog.once('ready-to-show', () => {
+		selectDialog.once("ready-to-show", () => {
 			selectDialog.show();
 			selectDialog.focus();
 		});
@@ -308,7 +323,7 @@ function showAccountSelectionDialog(accountManager) {
  * @returns {Promise<void>}
  */
 async function showStartupAccountChooser(accountManager) {
-	const { BrowserWindow, ipcMain } = require('electron');
+	const { BrowserWindow, ipcMain } = require("electron");
 	const accounts = accountManager.getAllAccounts();
 
 	// Get dark mode preference
@@ -317,7 +332,7 @@ async function showStartupAccountChooser(accountManager) {
 	// Calculate height based on number of accounts + header + buttons
 	const baseHeight = 180;
 	const accountHeight = 50;
-	const height = Math.min(baseHeight + (accounts.length * accountHeight), 500);
+	const height = Math.min(baseHeight + accounts.length * accountHeight, 500);
 
 	// Create selection dialog
 	const selectDialog = new BrowserWindow({
@@ -327,38 +342,43 @@ async function showStartupAccountChooser(accountManager) {
 		modal: false,
 		show: false,
 		autoHideMenuBar: true,
-		title: 'Select Accounts',
-		backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
+		title: "Select Accounts",
+		backgroundColor: isDarkMode ? "#1e1e1e" : "#ffffff",
 		webPreferences: {
 			nodeIntegration: true,
-			contextIsolation: false
-		}
+			contextIsolation: false,
+		},
 	});
 
 	// Build account checkboxes HTML
-	const accountItems = accounts.map(a =>
-		`<label class="account-item">
-			<input type="checkbox" data-id="${a.id}" ${a.autoRestore !== false ? 'checked' : ''}>
+	const accountItems = accounts
+		.map(
+			(a) =>
+				`<label class="account-item">
+			<input type="checkbox" data-id="${a.id}" ${a.autoRestore !== false ? "checked" : ""}>
 			<span>${a.displayName}</span>
-		</label>`
-	).join('');
+		</label>`,
+		)
+		.join("");
 
-	selectDialog.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`
+	selectDialog.loadURL(
+		"data:text/html;charset=utf-8," +
+			encodeURIComponent(`
 		<!DOCTYPE html>
 		<html>
 		<head>
-			<meta name="color-scheme" content="${isDarkMode ? 'dark' : 'light'}">
+			<meta name="color-scheme" content="${isDarkMode ? "dark" : "light"}">
 			<style>
 				* { box-sizing: border-box; }
 				body {
 					font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 					padding: 20px;
 					margin: 0;
-					background-color: ${isDarkMode ? '#1e1e1e' : '#ffffff'};
-					color: ${isDarkMode ? '#e0e0e0' : '#000000'};
+					background-color: ${isDarkMode ? "#1e1e1e" : "#ffffff"};
+					color: ${isDarkMode ? "#e0e0e0" : "#000000"};
 				}
 				h2 { margin: 0 0 10px 0; font-size: 18px; }
-				p { margin: 5px 0 15px 0; font-size: 14px; color: ${isDarkMode ? '#aaa' : '#666'}; }
+				p { margin: 5px 0 15px 0; font-size: 14px; color: ${isDarkMode ? "#aaa" : "#666"}; }
 				.account-list {
 					display: flex;
 					flex-direction: column;
@@ -372,14 +392,14 @@ async function showStartupAccountChooser(accountManager) {
 					align-items: center;
 					gap: 10px;
 					padding: 10px;
-					background: ${isDarkMode ? '#2d2d2d' : '#f5f5f5'};
-					border: 1px solid ${isDarkMode ? '#444' : '#ddd'};
+					background: ${isDarkMode ? "#2d2d2d" : "#f5f5f5"};
+					border: 1px solid ${isDarkMode ? "#444" : "#ddd"};
 					border-radius: 4px;
 					cursor: pointer;
 					transition: background 0.2s;
 				}
 				.account-item:hover {
-					background: ${isDarkMode ? '#3a3a3a' : '#e9e9e9'};
+					background: ${isDarkMode ? "#3a3a3a" : "#e9e9e9"};
 				}
 				.account-item input[type="checkbox"] {
 					width: 18px;
@@ -388,7 +408,7 @@ async function showStartupAccountChooser(accountManager) {
 				}
 				.account-item span {
 					flex: 1;
-					color: ${isDarkMode ? '#e0e0e0' : '#000000'};
+					color: ${isDarkMode ? "#e0e0e0" : "#000000"};
 				}
 				.buttons {
 					display: flex;
@@ -403,15 +423,15 @@ async function showStartupAccountChooser(accountManager) {
 					border: none;
 				}
 				#cancel {
-					background: ${isDarkMode ? '#3a3a3a' : '#f0f0f0'};
-					color: ${isDarkMode ? '#e0e0e0' : '#000000'};
+					background: ${isDarkMode ? "#3a3a3a" : "#f0f0f0"};
+					color: ${isDarkMode ? "#e0e0e0" : "#000000"};
 				}
 				#open {
 					background: #0078d4;
 					color: white;
 				}
 				#open:hover { background: #106ebe; }
-				#cancel:hover { background: ${isDarkMode ? '#4a4a4a' : '#e0e0e0'}; }
+				#cancel:hover { background: ${isDarkMode ? "#4a4a4a" : "#e0e0e0"}; }
 			</style>
 		</head>
 		<body>
@@ -445,29 +465,30 @@ async function showStartupAccountChooser(accountManager) {
 			</script>
 		</body>
 		</html>
-	`));
+	`),
+	);
 
 	const handler = (_event, accountIds) => {
 		if (accountIds && accountIds.length > 0) {
 			// Create windows for selected accounts
-			accountIds.forEach(id => {
+			accountIds.forEach((id) => {
 				const account = accountManager.getAccount(id);
 				if (account) {
 					accountManager.createAccountWindow(account);
 				}
 			});
 		}
-		ipcMain.removeListener('startup-account-selection', handler);
+		ipcMain.removeListener("startup-account-selection", handler);
 	};
 
-	ipcMain.once('startup-account-selection', handler);
+	ipcMain.once("startup-account-selection", handler);
 
-	selectDialog.on('closed', () => {
-		ipcMain.removeListener('startup-account-selection', handler);
+	selectDialog.on("closed", () => {
+		ipcMain.removeListener("startup-account-selection", handler);
 		// If dialog is closed without selection, open no windows
 	});
 
-	selectDialog.once('ready-to-show', () => {
+	selectDialog.once("ready-to-show", () => {
 		selectDialog.show();
 		selectDialog.focus();
 	});
@@ -486,7 +507,7 @@ async function openComposeWindow(url, accountManager) {
 	if (accountManager) {
 		const accounts = accountManager.getAllAccounts();
 		if (accounts.length === 0) {
-			logger.debug('No accounts available, using default partition');
+			logger.debug("No accounts available, using default partition");
 		} else if (accounts.length === 1) {
 			// Single account - use it directly
 			targetPartition = accounts[0].partition;
@@ -495,7 +516,7 @@ async function openComposeWindow(url, accountManager) {
 			// Multiple accounts - show selection dialog
 			targetAccountId = await showAccountSelectionDialog(accountManager);
 			if (!targetAccountId) {
-				logger.debug('Account selection cancelled');
+				logger.debug("Account selection cancelled");
 				return;
 			}
 			const account = accountManager.getAccount(targetAccountId);
@@ -508,29 +529,31 @@ async function openComposeWindow(url, accountManager) {
 	const composeWindow = new BrowserWindow({
 		width: 1000,
 		height: 800,
-		backgroundColor: isDarkMode ? '#302a75' : '#fff',
+		backgroundColor: isDarkMode ? "#302a75" : "#fff",
 		show: false,
 		autoHideMenuBar: true,
 		icon: iconChooser.getFile(),
 		webPreferences: {
 			partition: targetPartition,
-			preload: path.join(__dirname, '..', 'browser', 'index.js'),
+			preload: path.join(__dirname, "..", "browser", "index.js"),
 			contextIsolation: false,
 			sandbox: false,
 			spellcheck: false,
-			additionalArguments: targetAccountId ? [`--accountId=${targetAccountId}`] : []
-		}
+			additionalArguments: targetAccountId
+				? [`--accountId=${targetAccountId}`]
+				: [],
+		},
 	});
 
-	require('@electron/remote/main').enable(composeWindow.webContents);
+	require("@electron/remote/main").enable(composeWindow.webContents);
 
-	composeWindow.once('ready-to-show', () => {
+	composeWindow.once("ready-to-show", () => {
 		composeWindow.show();
 	});
 
 	composeWindow.loadURL(url, { userAgent: config.chromeUserAgent });
 
-	logger.debug('Compose window opened with URL:', url);
+	logger.debug("Compose window opened with URL:", url);
 }
 
 /**
@@ -544,14 +567,14 @@ function convertMailtoToOutlookURL(mailtoUrl) {
 		const mailtoContent = mailtoUrl.substring(7);
 
 		// Parse the mailto URL
-		const [recipient, queryString] = mailtoContent.split('?');
+		const [recipient, queryString] = mailtoContent.split("?");
 
 		// Build Outlook compose URL
 		let outlookUrl = config.url;
-		if (!outlookUrl.endsWith('/')) {
-			outlookUrl += '/';
+		if (!outlookUrl.endsWith("/")) {
+			outlookUrl += "/";
 		}
-		outlookUrl += 'mail/deeplink/compose?';
+		outlookUrl += "mail/deeplink/compose?";
 
 		// Add recipient
 		if (recipient) {
@@ -564,26 +587,26 @@ function convertMailtoToOutlookURL(mailtoUrl) {
 			const params = new URLSearchParams(queryString);
 
 			// cc and bcc use ? separator
-			if (params.has('cc')) {
-				outlookUrl += `?cc=${params.get('cc')}`;
+			if (params.has("cc")) {
+				outlookUrl += `?cc=${params.get("cc")}`;
 			}
-			if (params.has('bcc')) {
-				outlookUrl += `?bcc=${params.get('bcc')}`;
+			if (params.has("bcc")) {
+				outlookUrl += `?bcc=${params.get("bcc")}`;
 			}
 
 			// subject and body use & separator
-			if (params.has('subject')) {
-				outlookUrl += `&subject=${encodeURIComponent(params.get('subject'))}`;
+			if (params.has("subject")) {
+				outlookUrl += `&subject=${encodeURIComponent(params.get("subject"))}`;
 			}
-			if (params.has('body')) {
-				outlookUrl += `&body=${encodeURIComponent(params.get('body'))}`;
+			if (params.has("body")) {
+				outlookUrl += `&body=${encodeURIComponent(params.get("body"))}`;
 			}
 		}
 
-		logger.debug('Converted mailto URL to:', outlookUrl);
+		logger.debug("Converted mailto URL to:", outlookUrl);
 		return outlookUrl;
 	} catch (err) {
-		logger.error('Error converting mailto URL:', err);
+		logger.error("Error converting mailto URL:", err);
 		return config.url;
 	}
 }

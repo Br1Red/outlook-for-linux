@@ -1,6 +1,5 @@
-const { Notification, BrowserWindow, app } = require('electron');
-const path = require('path');
-const dndManager = require('../utils/dnd');
+const { Notification, app } = require("electron");
+const dndManager = require("../utils/dnd");
 
 /**
  * @typedef {Object} ReminderNotification
@@ -15,12 +14,9 @@ const dndManager = require('../utils/dnd');
  * @typedef {Object} EmailNotification
  * @property {string} address
  * @property {string} subject
+ * @property {string} [body]
  */
 
-let reminders = [];
-let emails = [];
-let reminderNotificationHandle = null;
-let emailNotificationHandle = null;
 let mainWindow = null;
 let iconPath = null;
 let menusInstance = null;
@@ -29,6 +25,12 @@ let menusInstance = null;
 let currentEmailCount = 0;
 let currentReminderCount = 0;
 let alternatingInterval = null;
+
+// Per-item notifications
+/** @type {Map<string, Electron.Notification>} */
+let emailNotifications = new Map();
+/** @type {Map<string, Electron.Notification>} */
+let reminderNotifications = new Map();
 
 /**
  * Initialize the notification module
@@ -40,8 +42,11 @@ function init(window, icon, menus) {
 	mainWindow = window;
 	iconPath = icon;
 	menusInstance = menus;
-	console.log('[Notification Module] Initialized with icon:', icon);
-	console.log('[Notification Module] Notification.isSupported():', Notification.isSupported());
+	console.log("[Notification Module] Initialized with icon:", icon);
+	console.log(
+		"[Notification Module] Notification.isSupported():",
+		Notification.isSupported(),
+	);
 }
 
 /**
@@ -49,7 +54,10 @@ function init(window, icon, menus) {
  * @param {number} count - Unread email count from Outlook
  */
 function updateBadgeFromUnreadCount(count) {
-	console.log('[Notification Module] updateBadgeFromUnreadCount called with count:', count);
+	console.log(
+		"[Notification Module] updateBadgeFromUnreadCount called with count:",
+		count,
+	);
 	currentEmailCount = count;
 	updateAlternatingBadge();
 }
@@ -59,7 +67,10 @@ function updateBadgeFromUnreadCount(count) {
  * @param {number} count - Active reminder count
  */
 function updateBadgeFromReminderCount(count) {
-	console.log('[Notification Module] updateBadgeFromReminderCount called with count:', count);
+	console.log(
+		"[Notification Module] updateBadgeFromReminderCount called with count:",
+		count,
+	);
 	currentReminderCount = count;
 	updateAlternatingBadge();
 }
@@ -68,7 +79,12 @@ function updateBadgeFromReminderCount(count) {
  * Update badge with alternating logic
  */
 function updateAlternatingBadge() {
-	console.log('[Notification Module] updateAlternatingBadge called - emails:', currentEmailCount, 'reminders:', currentReminderCount);
+	console.log(
+		"[Notification Module] updateAlternatingBadge called - emails:",
+		currentEmailCount,
+		"reminders:",
+		currentReminderCount,
+	);
 
 	// Stop any existing alternating interval
 	if (alternatingInterval) {
@@ -78,33 +94,42 @@ function updateAlternatingBadge() {
 
 	// If both counts exist, alternate between them
 	if (currentEmailCount > 0 && currentReminderCount > 0) {
-		console.log('[Notification Module] Both counts > 0, starting alternation');
+		console.log("[Notification Module] Both counts > 0, starting alternation");
 		let showEmail = true;
 
 		// Initial display
-		updateTrayBadge(showEmail ? currentEmailCount : currentReminderCount, showEmail ? 'email' : 'reminder');
+		updateTrayBadge(
+			showEmail ? currentEmailCount : currentReminderCount,
+			showEmail ? "email" : "reminder",
+		);
 
 		// Alternate every 3 seconds
 		alternatingInterval = setInterval(() => {
 			showEmail = !showEmail;
-			console.log('[Notification Module] Alternating to:', showEmail ? 'email' : 'reminder');
-			updateTrayBadge(showEmail ? currentEmailCount : currentReminderCount, showEmail ? 'email' : 'reminder');
+			console.log(
+				"[Notification Module] Alternating to:",
+				showEmail ? "email" : "reminder",
+			);
+			updateTrayBadge(
+				showEmail ? currentEmailCount : currentReminderCount,
+				showEmail ? "email" : "reminder",
+			);
 		}, 3000);
 	}
 	// Only emails
 	else if (currentEmailCount > 0) {
-		console.log('[Notification Module] Only emails, showing email badge');
-		updateTrayBadge(currentEmailCount, 'email');
+		console.log("[Notification Module] Only emails, showing email badge");
+		updateTrayBadge(currentEmailCount, "email");
 	}
 	// Only reminders
 	else if (currentReminderCount > 0) {
-		console.log('[Notification Module] Only reminders, showing reminder badge');
-		updateTrayBadge(currentReminderCount, 'reminder');
+		console.log("[Notification Module] Only reminders, showing reminder badge");
+		updateTrayBadge(currentReminderCount, "reminder");
 	}
 	// No badges
 	else {
-		console.log('[Notification Module] No badges to show');
-		updateTrayBadge(0, 'email');
+		console.log("[Notification Module] No badges to show");
+		updateTrayBadge(0, "email");
 	}
 }
 
@@ -114,7 +139,12 @@ function updateAlternatingBadge() {
  * @param {string} type - 'email' or 'reminder'
  */
 function updateTrayBadge(count, type) {
-	console.log('[Notification Module] updateTrayBadge called - count:', count, 'type:', type);
+	console.log(
+		"[Notification Module] updateTrayBadge called - count:",
+		count,
+		"type:",
+		type,
+	);
 	app.setBadgeCount(count);
 	if (menusInstance) {
 		menusInstance.updateTrayBadge(count, type);
@@ -125,21 +155,39 @@ function updateTrayBadge(count, type) {
  * Reset current email and reminder notifications
  */
 function reset() {
-	reminders = [];
-	emails = [];
-	// Badge is now updated by Outlook's unread count
-	if (reminderNotificationHandle) {
-		reminderNotificationHandle.close();
-		reminderNotificationHandle = null;
-	}
-	if (emailNotificationHandle) {
-		emailNotificationHandle.close();
-		emailNotificationHandle = null;
+	emailNotifications.forEach((notification) => notification.close());
+	reminderNotifications.forEach((notification) => notification.close());
+	emailNotifications.clear();
+	reminderNotifications.clear();
+}
+
+/**
+ * Show all account windows (or the stored main window)
+ */
+function showApp() {
+	if (menusInstance) {
+		menusInstance.open();
+	} else if (mainWindow && !mainWindow.isDestroyed()) {
+		mainWindow.show();
+		mainWindow.focus();
 	}
 }
 
 /**
- * Show reminder notification for all current reminders
+ * Generate a stable key for a notification
+ * @param {string} type
+ * @param {Object} data
+ * @returns {string}
+ */
+function makeKey(type, data) {
+	if (type === "email") {
+		return `email:${data.address || ""}:${data.subject || ""}`;
+	}
+	return `reminder:${data.subject || ""}:${data.timeUntil || ""}`;
+}
+
+/**
+ * Show reminder notification for a single reminder
  * @param {ReminderNotification} notification
  */
 function showReminderNotification(notification) {
@@ -147,183 +195,94 @@ function showReminderNotification(notification) {
 
 	// Check DND before showing notification
 	if (dndManager.isDNDActive()) {
-		console.log('[Notification] DND active - suppressing reminder notification');
+		console.log(
+			"[Notification] DND active - suppressing reminder notification",
+		);
 		return;
 	}
 
-	// Check if same notification already exists
-	if (!reminders.find(r => r.subject === notification.subject && r.timeUntil === notification.timeUntil)) {
-		reminders.push(notification);
+	const key = makeKey("reminder", notification);
+	if (reminderNotifications.has(key)) {
+		console.log("[Notification] Reminder notification already showing:", key);
+		return;
 	}
 
-	let title;
-	let body;
+	const title = `${notification.reminderType || "Reminder"}: ${notification.subject}`;
+	const details = [];
+	if (notification.timeUntil) details.push(`Time: ${notification.timeUntil}`);
+	if (notification.startTime) details.push(`Start: ${notification.startTime}`);
+	if (notification.location) details.push(`Location: ${notification.location}`);
+	const body = details.join("\n");
 
-	if (reminders.length === 1) {
-		// Single reminder: show detailed info
-		const r = reminders[0];
-		title = `${r.reminderType || 'Reminder'}: ${r.subject}`;
+	const notif = new Notification({
+		title,
+		body,
+		icon: iconPath,
+		urgency: "normal",
+	});
 
-		const details = [];
-		if (r.timeUntil) details.push(`Time: ${r.timeUntil}`);
-		if (r.startTime) details.push(`Start: ${r.startTime}`);
-		if (r.location) details.push(`Location: ${r.location}`);
+	notif.on("click", () => {
+		console.log("[Notification] Reminder clicked:", key);
+		notif.close();
+		reminderNotifications.delete(key);
+		showApp();
+	});
 
-		body = details.join('\n');
-	} else {
-		// Multiple reminders: show list
-		title = `${reminders.length} New Reminders`;
-		body = reminders.map(r => {
-			let line = `• ${r.subject}`;
-			if (r.timeUntil) line += ` (${r.timeUntil})`;
-			return line;
-		}).join('\n');
-	}
+	notif.on("close", () => {
+		reminderNotifications.delete(key);
+	});
 
-	if (!reminderNotificationHandle) {
-		reminderNotificationHandle = new Notification({
-			title,
-			body,
-			icon: iconPath,
-			urgency: 'normal',
-		});
-
-		reminderNotificationHandle.on('click', () => {
-			if (mainWindow) {
-				mainWindow.show();
-				mainWindow.focus();
-			}
-		});
-
-		reminderNotificationHandle.on('close', () => {
-			reminders = [];
-			reminderNotificationHandle = null;
-		});
-	} else {
-		// Update existing notification - need to recreate since Electron doesn't support updating
-		reminderNotificationHandle.close();
-		reminderNotificationHandle = new Notification({
-			title,
-			body,
-			icon: iconPath,
-			urgency: 'normal',
-		});
-
-		reminderNotificationHandle.on('click', () => {
-			if (mainWindow) {
-				mainWindow.show();
-				mainWindow.focus();
-			}
-		});
-
-		reminderNotificationHandle.on('close', () => {
-			reminders = [];
-			reminderNotificationHandle = null;
-		});
-	}
-
-	reminderNotificationHandle.show();
+	reminderNotifications.set(key, notif);
+	notif.show();
 }
 
 /**
- * Get sender display text (already formatted by Outlook as name or email)
- * @param {string} address
- * @returns {string}
- */
-function getSenderName(address) {
-    // Address is already just the name or email from Outlook
-    return address;
-}
-
-/**
- * Show email notification for all current emails
+ * Show email notification for a single email
  * @param {EmailNotification} notification
  */
 function showEmailNotification(notification) {
-    console.log('[Notification Module] showEmailNotification called:', notification);
-    if (!notification) return;
+	console.log(
+		"[Notification Module] showEmailNotification called:",
+		notification,
+	);
+	if (!notification) return;
 
-    // Check DND before showing notification
-    if (dndManager.isDNDActive()) {
-        console.log('[Notification] DND active - suppressing email notification');
-        return;
-    }
+	// Check DND before showing notification
+	if (dndManager.isDNDActive()) {
+		console.log("[Notification] DND active - suppressing email notification");
+		return;
+	}
 
-    // Check if same notification already exists (compare by sender name + subject)
-    const senderName = getSenderName(notification.address);
-    if (!emails.find(e => getSenderName(e.address) === senderName && e.subject === notification.subject)) {
-        emails.push(notification);
-    }
+	const key = makeKey("email", notification);
+	if (emailNotifications.has(key)) {
+		console.log("[Notification] Email notification already showing:", key);
+		return;
+	}
 
-    let title;
-    let body;
+	const title = "New Email";
+	const body = `From: ${notification.address}\nSubject: ${notification.subject}${notification.body ? "\n\n" + notification.body : ""}`;
 
-    if (emails.length === 1) {
-        // Single email: show full details
-        title = 'New Email';
-        body = `From: ${emails[0].address}\nSubject: ${emails[0].subject}\n\nMessage: ${emails[0].body}`;
-    } else {
-        // Multiple emails: check if all from same sender (compare by name only)
-        const senderNames = [...new Set(emails.map(e => getSenderName(e.address)))];
+	const notif = new Notification({
+		title,
+		body,
+		icon: iconPath,
+		urgency: "normal",
+	});
 
-        if (senderNames.length === 1) {
-            // All from same sender: group by sender
-            title = `${emails.length} new emails from ${senderNames[0]}`;
-            body = emails.map(e => `• Subject: ${e.subject}`).join('\n');
-        } else {
-            // Different senders: show sender + subject (no message body)
-            title = `${emails.length} New Emails`;
-            body = emails.map(e => `${getSenderName(e.address)}\n• Subject: ${e.subject}`).join('\n\n');
-        }
-    }
+	notif.on("click", () => {
+		console.log("[Notification] Email clicked:", key);
+		notif.close();
+		emailNotifications.delete(key);
+		showApp();
+	});
 
-    if (!emailNotificationHandle) {
-        emailNotificationHandle = new Notification({
-            title,
-            body,
-            icon: iconPath,
-            urgency: 'normal',
-        });
+	notif.on("close", () => {
+		emailNotifications.delete(key);
+	});
 
-        emailNotificationHandle.on('click', () => {
-            if (mainWindow) {
-                mainWindow.show();
-                mainWindow.focus();
-            }
-        });
-
-        emailNotificationHandle.on('close', () => {
-            emailNotificationHandle = null;
-            // Clear notification tracking but don't update badge
-            emails = [];
-        });
-    } else {
-        // Update existing notification - need to recreate since Electron doesn't support updating
-        emailNotificationHandle.close();
-        emailNotificationHandle = new Notification({
-            title,
-            body,
-            icon: iconPath,
-            urgency: 'normal',
-        });
-
-        emailNotificationHandle.on('click', () => {
-            if (mainWindow) {
-                mainWindow.show();
-                mainWindow.focus();
-            }
-        });
-
-        emailNotificationHandle.on('close', () => {
-            emailNotificationHandle = null;
-            // Clear notification tracking but don't update badge
-            emails = [];
-        });
-    }
-
-    console.log('[Notification Module] Showing email notification...');
-    emailNotificationHandle.show();
-    // Badge is now updated by Outlook's unread count, not notification count
+	emailNotifications.set(key, notif);
+	console.log("[Notification Module] Showing email notification...");
+	notif.show();
 }
 
 module.exports = {
@@ -332,5 +291,5 @@ module.exports = {
 	showReminderNotification,
 	showEmailNotification,
 	updateBadgeFromUnreadCount,
-	updateBadgeFromReminderCount
+	updateBadgeFromReminderCount,
 };

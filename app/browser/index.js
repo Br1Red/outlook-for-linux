@@ -1,66 +1,99 @@
-console.log('[Preload] Script starting...');
+console.log("[Preload] Script starting...");
 
 (async function () {
-	const {ipcRenderer} = require('electron');
+	const { ipcRenderer, shell } = require("electron");
 
-	console.log('[Preload] Inside IIFE, getting config...');
+	console.log("[Preload] Inside IIFE, getting config...");
 
 	// Get account ID from additional arguments
-	const accountIdArg = process.argv.find(arg => arg.startsWith('--accountId='));
-	const accountId = accountIdArg ? accountIdArg.split('=')[1] : null;
-	console.log('[Preload] Account ID:', accountId);
+	const accountIdArg = process.argv.find((arg) =>
+		arg.startsWith("--accountId="),
+	);
+	const accountId = accountIdArg ? accountIdArg.split("=")[1] : null;
+	console.log("[Preload] Account ID:", accountId);
 
 	let config;
-	ipcRenderer.invoke('getConfig').then(mainConfig => {
-		config = mainConfig;
-		console.log('[Preload] Config loaded, disableNotifications:', config.disableNotifications);
+	ipcRenderer
+		.invoke("getConfig")
+		.then((mainConfig) => {
+			config = mainConfig;
+			console.log(
+				"[Preload] Config loaded, disableNotifications:",
+				config.disableNotifications,
+			);
 
-		// Start account email detection if we have an account ID
-		if (accountId) {
-			detectAccountEmail(accountId, ipcRenderer);
-		}
-
-		// Initialize notification interception FIRST (before other modules that might fail)
-		if (!config.disableNotifications) {
-			console.log('[Preload] Calling initNotificationInterception...');
-			initNotificationInterception(ipcRenderer);
-			console.log('[Preload] initNotificationInterception called');
-
-			// Setup unread count observer
+			// Start account email detection if we have an account ID
 			if (accountId) {
-				console.log('[Preload] Setting up unread count observer...');
-				setupUnreadCountObserver(ipcRenderer, accountId);
-
-				// Setup reminder count observer
-				console.log('[Preload] Setting up reminder count observer...');
-				setupReminderCountObserver(ipcRenderer, accountId);
-			} else {
-				// Fallback for single account mode (no accountId)
-				console.log('[Preload] Setting up unread count observer (no accountId)...');
-				setupUnreadCountObserver(ipcRenderer, null);
-
-				// Setup reminder count observer
-				console.log('[Preload] Setting up reminder count observer (no accountId)...');
-				setupReminderCountObserver(ipcRenderer, null);
+				detectAccountEmail(accountId, ipcRenderer);
 			}
-		}
 
-		// Initialize other modules (wrapped in try-catch as they have issues)
-		try {
-			initializeModules(config, ipcRenderer);
-			console.log('[Preload] Modules initialized');
-		} catch (err) {
-			console.error('[Preload] Error initializing modules:', err);
-		}
-	}).catch(err => {
-		console.error('[Preload] Config error:', err);
-	});
+			// Initialize notification interception FIRST (before other modules that might fail)
+			if (!config.disableNotifications) {
+				console.log("[Preload] Calling initNotificationInterception...");
+				initNotificationInterception(ipcRenderer);
+				console.log("[Preload] initNotificationInterception called");
 
-	Object.defineProperty(navigator.serviceWorker, 'register', {
+				// Setup unread count observer
+				if (accountId) {
+					console.log("[Preload] Setting up unread count observer...");
+					setupUnreadCountObserver(ipcRenderer, accountId);
+
+					// Setup reminder count observer
+					console.log("[Preload] Setting up reminder count observer...");
+					setupReminderCountObserver(ipcRenderer, accountId);
+				} else {
+					// Fallback for single account mode (no accountId)
+					console.log(
+						"[Preload] Setting up unread count observer (no accountId)...",
+					);
+					setupUnreadCountObserver(ipcRenderer, null);
+
+					// Setup reminder count observer
+					console.log(
+						"[Preload] Setting up reminder count observer (no accountId)...",
+					);
+					setupReminderCountObserver(ipcRenderer, null);
+				}
+			}
+
+			// Initialize other modules (wrapped in try-catch as they have issues)
+			try {
+				initializeModules(config, ipcRenderer);
+				console.log("[Preload] Modules initialized");
+			} catch (err) {
+				console.error("[Preload] Error initializing modules:", err);
+			}
+		})
+		.catch((err) => {
+			console.error("[Preload] Config error:", err);
+		});
+
+	Object.defineProperty(navigator.serviceWorker, "register", {
 		value: () => {
 			return Promise.reject();
-		}
+		},
 	});
+
+	// Ctrl+Click on links opens them in the default system browser.
+	// Normal left clicks continue to open inside the app.
+	document.addEventListener(
+		"click",
+		(event) => {
+			if (!event.ctrlKey) return;
+
+			const anchor = event.target.closest("a[href]");
+			if (!anchor) return;
+
+			const url = anchor.href;
+			if (!url || !url.startsWith("http")) return;
+
+			event.preventDefault();
+			event.stopPropagation();
+
+			shell.openExternal(url);
+		},
+		true,
+	);
 
 	// Keep the CustomNotification class for sound playback
 	class CustomNotification {
@@ -71,54 +104,119 @@ console.log('[Preload] Script starting...');
 			options = options || {};
 
 			const notifSound = {
-				type: options.type ? options.type : 'new-message',
-				audio: 'default',
+				type: options.type ? options.type : "new-message",
+				audio: "default",
 				title: title,
-				body: options.body
+				body: options.body,
 			};
-			ipcRenderer.invoke('play-notification-sound', notifSound);
+			ipcRenderer.invoke("play-notification-sound", notifSound);
 
 			// Note: Native notifications are handled by MutationObserver below
 		}
 
 		static requestPermission(callback) {
-			if (typeof (callback) == 'function') {
-				callback('granted');
+			if (typeof callback == "function") {
+				callback("granted");
 			}
 		}
 
 		static get permission() {
-			return 'granted';
+			return "granted";
 		}
 	}
 
 	window.Notification = CustomNotification;
-}());
+})();
+
+// ------------------------------------------------------------
+// Link preview (hover tooltip / status bar)
+// ------------------------------------------------------------
+(function initLinkPreview() {
+	const { ipcRenderer, contextBridge } = require("electron");
+
+	contextBridge.exposeInMainWorld("linkPreview", {
+		onHover: (callback) => {
+			ipcRenderer.on("hover-link-url", (_, payload) => {
+				callback(payload);
+			});
+		},
+	});
+
+	const tooltipCss = `
+		#link-preview-tooltip {
+			position: fixed;
+			bottom: 8px;
+			left: 8px;
+			right: 8px;
+			padding: 6px 10px;
+			font-size: 12px;
+			background: rgba(30, 30, 30, 0.95);
+			color: #ddd;
+			border-radius: 4px;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			z-index: 999999;
+			display: none;
+		}
+	`;
+
+	function createTooltip() {
+		const style = document.createElement("style");
+		style.textContent = tooltipCss;
+		document.head.appendChild(style);
+
+		const tooltip = document.createElement("div");
+		tooltip.id = "link-preview-tooltip";
+		document.body.appendChild(tooltip);
+
+		window.linkPreview.onHover(({ url }) => {
+			if (!url) {
+				tooltip.style.display = "none";
+				return;
+			}
+			tooltip.textContent = url;
+			tooltip.style.display = "flex";
+		});
+	}
+
+	if (document.body) {
+		createTooltip();
+	} else {
+		document.addEventListener("DOMContentLoaded", createTooltip);
+	}
+})();
 
 /**
  * Initialize MutationObserver to intercept Outlook notification elements
  * @param {Electron.IpcRenderer} ipcRenderer
  */
 function initNotificationInterception(ipcRenderer) {
-	console.log('[Notification] Initializing notification interception...');
+	console.log("[Notification] Initializing notification interception...");
 
 	// Wait for DOM to be ready, then setup observer
 	const setupObserver = () => {
 		// Look for the notification pane container
-		const notificationPane = document.querySelector('[data-app-section="NotificationPane"]');
+		const notificationPane = document.querySelector(
+			'[data-app-section="NotificationPane"]',
+		);
 
 		if (notificationPane) {
-			console.log('[Notification] Found NotificationPane, setting up observer');
+			console.log("[Notification] Found NotificationPane, setting up observer");
 			observeNotificationPane(notificationPane, ipcRenderer);
 		} else {
 			// If not found, observe body and wait for it to appear
-			console.log('[Notification] NotificationPane not found, observing body for it');
+			console.log(
+				"[Notification] NotificationPane not found, observing body for it",
+			);
 			observeForNotificationPane(ipcRenderer);
 		}
 	};
 
-	if (document.readyState === 'loading') {
-		document.addEventListener('DOMContentLoaded', () => setTimeout(setupObserver, 2000));
+	if (document.readyState === "loading") {
+		document.addEventListener("DOMContentLoaded", () =>
+			setTimeout(setupObserver, 2000),
+		);
 	} else {
 		setTimeout(setupObserver, 2000);
 	}
@@ -129,10 +227,14 @@ function initNotificationInterception(ipcRenderer) {
  * @param {Electron.IpcRenderer} ipcRenderer
  */
 function observeForNotificationPane(ipcRenderer) {
-	const bodyObserver = new MutationObserver((mutations) => {
-		const notificationPane = document.querySelector('[data-app-section="NotificationPane"]');
+	const bodyObserver = new MutationObserver(() => {
+		const notificationPane = document.querySelector(
+			'[data-app-section="NotificationPane"]',
+		);
 		if (notificationPane) {
-			console.log('[Notification] NotificationPane appeared, setting up observer');
+			console.log(
+				"[Notification] NotificationPane appeared, setting up observer",
+			);
 			bodyObserver.disconnect();
 			observeNotificationPane(notificationPane, ipcRenderer);
 		}
@@ -153,7 +255,7 @@ function observeForNotificationPane(ipcRenderer) {
 function observeNotificationPane(notificationPane, ipcRenderer) {
 	const observer = new MutationObserver((mutations) => {
 		mutations.forEach((mutation) => {
-			mutation.addedNodes.forEach(node => {
+			mutation.addedNodes.forEach((node) => {
 				if (node.nodeType === Node.ELEMENT_NODE) {
 					processNotificationElement(node, ipcRenderer);
 				}
@@ -162,7 +264,7 @@ function observeNotificationPane(notificationPane, ipcRenderer) {
 	});
 
 	observer.observe(notificationPane, { childList: true, subtree: true });
-	console.log('[Notification] Observer attached to NotificationPane');
+	console.log("[Notification] Observer attached to NotificationPane");
 }
 
 /**
@@ -172,40 +274,47 @@ function observeNotificationPane(notificationPane, ipcRenderer) {
  */
 function processNotificationElement(element, ipcRenderer) {
 	// 1. Check for reminder notifications (divs with timeuntildisplaystring attribute)
-	const reminderDivs = element.querySelectorAll ?
-		[...element.querySelectorAll('[timeuntildisplaystring]')] : [];
+	const reminderDivs = element.querySelectorAll
+		? [...element.querySelectorAll("[timeuntildisplaystring]")]
+		: [];
 
 	// Also check if the element itself has the attribute
-	if (element.hasAttribute && element.hasAttribute('timeuntildisplaystring')) {
+	if (element.hasAttribute && element.hasAttribute("timeuntildisplaystring")) {
 		reminderDivs.push(element);
 	}
 
-	reminderDivs.forEach(reminderDiv => {
+	reminderDivs.forEach((reminderDiv) => {
 		const reminderData = extractReminderData(reminderDiv);
 		if (reminderData) {
-			console.log('[Notification] Reminder notification detected:', reminderData);
-			ipcRenderer.invoke('showReminderNotification', reminderData);
+			console.log(
+				"[Notification] Reminder notification detected:",
+				reminderData,
+			);
+			ipcRenderer.invoke("showReminderNotification", reminderData);
 		}
 	});
 
 	// 2. Check for email notifications (buttons with aria-label)
-	const emailButtons = element.querySelectorAll ?
-		[...element.querySelectorAll('button[aria-label]'),
-		 ...(element.matches?.('button[aria-label]') ? [element] : [])] : [];
+	const emailButtons = element.querySelectorAll
+		? [
+				...element.querySelectorAll("button[aria-label]"),
+				...(element.matches?.("button[aria-label]") ? [element] : []),
+			]
+		: [];
 
 	// Also check the element itself if it's a button
-	if (element.tagName === 'BUTTON' && element.hasAttribute('aria-label')) {
+	if (element.tagName === "BUTTON" && element.hasAttribute("aria-label")) {
 		emailButtons.push(element);
 	}
 
-	emailButtons.forEach(button => {
+	emailButtons.forEach((button) => {
 		// Check if this is an email notification by DOM structure
 		if (isEmailNotification(button)) {
-			const ariaLabel = button.getAttribute('aria-label') || '';
+			const ariaLabel = button.getAttribute("aria-label") || "";
 			const emailData = extractEmailData(button, ariaLabel);
 			if (emailData) {
-				console.log('[Notification] Email notification detected:', emailData);
-				ipcRenderer.invoke('showEmailNotification', emailData);
+				console.log("[Notification] Email notification detected:", emailData);
+				ipcRenderer.invoke("showEmailNotification", emailData);
 			}
 		}
 	});
@@ -219,9 +328,9 @@ function processNotificationElement(element, ipcRenderer) {
  */
 function isEmailNotification(button) {
 	// Check for email notification structure
-	const hasSender = button.querySelector('.ZJg8d');
-	const hasSubject = button.querySelector('.KTZ84');
-	const hasBody = button.querySelector('.mrxI1');
+	const hasSender = button.querySelector(".ZJg8d");
+	const hasSubject = button.querySelector(".KTZ84");
+	const hasBody = button.querySelector(".mrxI1");
 
 	return !!(hasSender && hasSubject && hasBody);
 }
@@ -233,60 +342,64 @@ function isEmailNotification(button) {
  * @returns {{address: string, subject: string} | null}
  */
 function extractEmailData(button, ariaLabel) {
-    // 1. Get Sender (Outlook shows email if no display name)
-    const senderElement = button.querySelector('.ZJg8d > div:first-child');
-    const sender = senderElement?.textContent?.trim();
+	// 1. Get Sender (Outlook shows email if no display name)
+	const senderElement = button.querySelector(".ZJg8d > div:first-child");
+	const sender = senderElement?.textContent?.trim();
 
-    // 2. Get Subject
-    const subjectElement = button.querySelector('.KTZ84');
-    const subject = subjectElement?.textContent?.trim();
+	// 2. Get Subject
+	const subjectElement = button.querySelector(".KTZ84");
+	const subject = subjectElement?.textContent?.trim();
 
-    // 3. Extract Body
-    const bodyElement = button.querySelector('.mrxI1');
-    let messageBody = '';
+	// 3. Extract Body
+	const bodyElement = button.querySelector(".mrxI1");
+	let messageBody = "";
 
-    if (bodyElement) {
-        const fullText = bodyElement.textContent;
-        const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/;
+	if (bodyElement) {
+		const fullText = bodyElement.textContent;
+		const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/;
 
-        // Process lines to clean up the body
-        const lines = fullText.split('\n');
-        const cleanLines = [];
+		// Process lines to clean up the body
+		const lines = fullText.split("\n");
+		const cleanLines = [];
 
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i].trim();
 
-            // Stop at email addresses (indicates reply footer starting)
-            if (emailRegex.test(line)) break;
+			// Stop at email addresses (indicates reply footer starting)
+			if (emailRegex.test(line)) break;
 
-            // Stop at date patterns (e.g., "2026. jan. 24." or "Jan 24, 2026")
-            if (/\d{4}\./.test(line) || /\d{1,2},\s*\d{4}/.test(line)) break;
+			// Stop at date patterns (e.g., "2026. jan. 24." or "Jan 24, 2026")
+			if (/\d{4}\./.test(line) || /\d{1,2},\s*\d{4}/.test(line)) break;
 
-            // Stop at common reply markers (lines ending with colon after name/time)
-            if (/:\s*$/.test(line) && line.length < 50) break;
+			// Stop at common reply markers (lines ending with colon after name/time)
+			if (/:\s*$/.test(line) && line.length < 50) break;
 
-            // Add line if it's not empty and we haven't reached 3 lines yet
-            if (line && cleanLines.length < 3) {
-                cleanLines.push(line);
-            } else if (cleanLines.length >= 3) {
-                break;
-            }
-        }
+			// Add line if it's not empty and we haven't reached 3 lines yet
+			if (line && cleanLines.length < 3) {
+				cleanLines.push(line);
+			} else if (cleanLines.length >= 3) {
+				break;
+			}
+		}
 
-        messageBody = cleanLines.join('\n');
-    }
+		messageBody = cleanLines.join("\n");
+	}
 
-    // 4. Use sender from element or fallback to aria-label
-    const formattedAddress = sender || (() => {
-        const colonIndex = ariaLabel.indexOf(':');
-        return colonIndex > -1 ? ariaLabel.substring(colonIndex + 1).trim() : 'Unknown';
-    })();
+	// 4. Use sender from element or fallback to aria-label
+	const formattedAddress =
+		sender ||
+		(() => {
+			const colonIndex = ariaLabel.indexOf(":");
+			return colonIndex > -1
+				? ariaLabel.substring(colonIndex + 1).trim()
+				: "Unknown";
+		})();
 
-    return {
-        address: formattedAddress,
-        subject: subject || 'New message',
-        body: messageBody
-    };
+	return {
+		address: formattedAddress,
+		subject: subject || "New message",
+		body: messageBody,
+	};
 }
 
 /**
@@ -296,11 +409,11 @@ function extractEmailData(button, ariaLabel) {
  */
 function extractReminderData(element) {
 	// Extract attributes directly from the element
-	const subject = element.getAttribute('subject') || '';
-	const location = element.getAttribute('location') || '';
-	const timeUntil = element.getAttribute('timeuntildisplaystring') || '';
-	const startTime = element.getAttribute('starttimedisplaystring') || '';
-	const reminderType = element.getAttribute('remindertype') || 'Reminder';
+	const subject = element.getAttribute("subject") || "";
+	const location = element.getAttribute("location") || "";
+	const timeUntil = element.getAttribute("timeuntildisplaystring") || "";
+	const startTime = element.getAttribute("starttimedisplaystring") || "";
+	const reminderType = element.getAttribute("remindertype") || "Reminder";
 
 	// Return data if subject exists
 	if (subject) {
@@ -309,7 +422,7 @@ function extractReminderData(element) {
 			location: location,
 			timeUntil: timeUntil,
 			startTime: startTime,
-			reminderType: reminderType
+			reminderType: reminderType,
 		};
 	}
 
@@ -322,108 +435,118 @@ function extractReminderData(element) {
  * @param {string} accountId
  */
 function setupUnreadCountObserver(ipcRenderer, accountId) {
+	try {
+		let debounceTimer;
+		const debouncedCheck = () => {
+			clearTimeout(debounceTimer);
+			debounceTimer = setTimeout(checkUnreadCount, 100);
+		};
 
-    try {
-        let debounceTimer;
-        const debouncedCheck = () => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(checkUnreadCount, 100);
-        };
+		const checkUnreadCount = () => {
+			try {
+				const unreadElements = document.querySelectorAll(".WIYG1.Mt2TB");
+				let totalCount = 0;
+				unreadElements.forEach((element) => {
+					if (element.closest('[aria-labelledby="favoritesRoot"]')) {
+						return;
+					}
+					const count = parseInt(element.textContent) || 0;
+					totalCount += count;
+				});
 
-        const checkUnreadCount = () => {
-            try {
-                const unreadElements = document.querySelectorAll('.WIYG1.Mt2TB');
-                let totalCount = 0;
-                unreadElements.forEach(element => {
-                    if (element.closest('[aria-labelledby="favoritesRoot"]')) {
-                        return;
-                    }
-                    const count = parseInt(element.textContent) || 0;
-                    totalCount += count;
-                });
+				console.log("[Unread Counter] Total unread count:", totalCount);
 
-                console.log('[Unread Counter] Total unread count:', totalCount);
+				if (ipcRenderer && ipcRenderer.invoke) {
+					ipcRenderer.invoke("updateUnreadCount", {
+						accountId,
+						count: totalCount,
+					});
+				}
+			} catch (e) {
+				console.error("[Unread Counter] ERROR in checkUnreadCount:", e);
+			}
+		};
 
-                if (ipcRenderer && ipcRenderer.invoke) {
-                    ipcRenderer.invoke('updateUnreadCount', { accountId, count: totalCount });
-                }
-            } catch (e) {
-                console.error('[Unread Counter] ERROR in checkUnreadCount:', e);
-            }
-        };
+		const observer = new MutationObserver((mutations) => {
+			try {
+				let relevantMutation = false;
+				for (const mutation of mutations) {
+					// Check added nodes
+					if (mutation.addedNodes) {
+						mutation.addedNodes.forEach((node) => {
+							// Ensure node is an element before accessing classList/querySelector
+							if (node.nodeType === 1) {
+								if (
+									node.classList?.contains("WIYG1") ||
+									(node.querySelector && node.querySelector(".WIYG1.Mt2TB"))
+								) {
+									relevantMutation = true;
+								}
+							}
+						});
+					}
 
-        const observer = new MutationObserver((mutations) => {
-            try {
-                let relevantMutation = false;
-                for (const mutation of mutations) {
-                    // Check added nodes
-                    if (mutation.addedNodes) {
-                        mutation.addedNodes.forEach(node => {
-                            // Ensure node is an element before accessing classList/querySelector
-                            if (node.nodeType === 1) { 
-                                if (node.classList?.contains('WIYG1') || (node.querySelector && node.querySelector('.WIYG1.Mt2TB'))) {
-                                    relevantMutation = true;
-                                }
-                            }
-                        });
-                    }
+					// Check removed nodes
+					if (mutation.removedNodes) {
+						mutation.removedNodes.forEach((node) => {
+							if (node.nodeType === 1) {
+								if (
+									node.classList?.contains("WIYG1") ||
+									(node.querySelector && node.querySelector(".WIYG1.Mt2TB"))
+								) {
+									relevantMutation = true;
+								}
+							}
+						});
+					}
 
-                    // Check removed nodes
-                    if (mutation.removedNodes) {
-                        mutation.removedNodes.forEach(node => {
-                            if (node.nodeType === 1) {
-                                if (node.classList?.contains('WIYG1') || (node.querySelector && node.querySelector('.WIYG1.Mt2TB'))) {
-                                    relevantMutation = true;
-                                }
-                            }
-                        });
-                    }
+					if (
+						mutation.type === "characterData" &&
+						mutation.target.parentElement?.classList.contains("WIYG1")
+					) {
+						relevantMutation = true;
+					}
+				}
 
-                    if (mutation.type === 'characterData' && mutation.target.parentElement?.classList.contains('WIYG1')) {
-                        relevantMutation = true;
-                    }
-                }
+				if (relevantMutation) {
+					debouncedCheck();
+				}
+			} catch (e) {
+				console.error("[Unread Counter] ERROR inside Observer callback:", e);
+			}
+		});
 
-                if (relevantMutation) {
-                    debouncedCheck();
-                }
-            } catch (e) {
-                console.error('[Unread Counter] ERROR inside Observer callback:', e);
-            }
-        });
+		// Defensive check: Does html element exist?
+		const targetNode = document.documentElement || document;
+		observer.observe(targetNode, {
+			childList: true,
+			subtree: true,
+			characterData: true,
+		});
 
-        // Defensive check: Does html element exist?
-        const targetNode = document.documentElement || document;
-        observer.observe(targetNode, {
-            childList: true,
-            subtree: true,
-            characterData: true
-        });
-        
-        let attempts = 0;
-        const maxAttempts = 20;
+		let attempts = 0;
+		const maxAttempts = 20;
 
-        const pollForElements = () => {
-            console.log(`[Unread Counter] Polling attempt ${attempts + 1}...`);
-            
-            const unreadElements = document.querySelectorAll('.WIYG1.Mt2TB');
+		const pollForElements = () => {
+			console.log(`[Unread Counter] Polling attempt ${attempts + 1}...`);
 
-            if (unreadElements.length > 0) {
-                console.log('[Unread Counter] Elements found!');
-                checkUnreadCount();
-            } else if (attempts < maxAttempts) {
-                attempts++;
-                setTimeout(pollForElements, 500); 
-            } else {
-                console.log('[Unread Counter] Polling timeout reached.');
-            }
-        };
+			const unreadElements = document.querySelectorAll(".WIYG1.Mt2TB");
 
-        setTimeout(pollForElements, 1000);
+			if (unreadElements.length > 0) {
+				console.log("[Unread Counter] Elements found!");
+				checkUnreadCount();
+			} else if (attempts < maxAttempts) {
+				attempts++;
+				setTimeout(pollForElements, 500);
+			} else {
+				console.log("[Unread Counter] Polling timeout reached.");
+			}
+		};
 
-    } catch (e) {
-        console.error('[Unread Counter] CRITICAL ERROR during setup:', e);
-    }
+		setTimeout(pollForElements, 1000);
+	} catch (e) {
+		console.error("[Unread Counter] CRITICAL ERROR during setup:", e);
+	}
 }
 
 /**
@@ -432,79 +555,98 @@ function setupUnreadCountObserver(ipcRenderer, accountId) {
  * @param {string} accountId
  */
 function setupReminderCountObserver(ipcRenderer, accountId) {
-    try {
-        let debounceTimer;
-        const debouncedCheck = () => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(checkReminderCount, 100);
-        };
+	try {
+		let debounceTimer;
+		const debouncedCheck = () => {
+			clearTimeout(debounceTimer);
+			debounceTimer = setTimeout(checkReminderCount, 100);
+		};
 
-        const checkReminderCount = () => {
-            try {
-                // Count elements with timeuntildisplaystring attribute (active reminders)
-                const reminderElements = document.querySelectorAll('[timeuntildisplaystring]');
-                const totalCount = reminderElements.length;
+		const checkReminderCount = () => {
+			try {
+				// Count elements with timeuntildisplaystring attribute (active reminders)
+				const reminderElements = document.querySelectorAll(
+					"[timeuntildisplaystring]",
+				);
+				const totalCount = reminderElements.length;
 
-                console.log('[Reminder Counter] Total reminder count:', totalCount);
+				console.log("[Reminder Counter] Total reminder count:", totalCount);
 
-                if (ipcRenderer && ipcRenderer.invoke) {
-                    console.log('[Reminder Counter] Invoking updateReminderCount with count:', totalCount);
-                    ipcRenderer.invoke('updateReminderCount', { accountId, count: totalCount })
-                        .then(() => {
-                            console.log('[Reminder Counter] updateReminderCount invoke succeeded');
-                        })
-                        .catch((err) => {
-                            console.error('[Reminder Counter] updateReminderCount invoke FAILED:', err);
-                        });
-                } else {
-                    console.error('[Reminder Counter] ipcRenderer or invoke not available!');
-                }
-            } catch (e) {
-                console.error('[Reminder Counter] ERROR in checkReminderCount:', e);
-            }
-        };
+				if (ipcRenderer && ipcRenderer.invoke) {
+					console.log(
+						"[Reminder Counter] Invoking updateReminderCount with count:",
+						totalCount,
+					);
+					ipcRenderer
+						.invoke("updateReminderCount", { accountId, count: totalCount })
+						.then(() => {
+							console.log(
+								"[Reminder Counter] updateReminderCount invoke succeeded",
+							);
+						})
+						.catch((err) => {
+							console.error(
+								"[Reminder Counter] updateReminderCount invoke FAILED:",
+								err,
+							);
+						});
+				} else {
+					console.error(
+						"[Reminder Counter] ipcRenderer or invoke not available!",
+					);
+				}
+			} catch (e) {
+				console.error("[Reminder Counter] ERROR in checkReminderCount:", e);
+			}
+		};
 
-        const observer = new MutationObserver((mutations) => {
-            try {
-                let relevantMutation = false;
-                for (const mutation of mutations) {
-                    // Check added/removed nodes for reminder elements
-                    if (mutation.addedNodes || mutation.removedNodes) {
-                        const nodeLists = [mutation.addedNodes, mutation.removedNodes].filter(Boolean);
-                        nodeLists.forEach(nodeList => {
-                            nodeList.forEach(node => {
-                                if (node.nodeType === 1) {
-                                    if (node.hasAttribute && node.hasAttribute('timeuntildisplaystring') ||
-                                        (node.querySelector && node.querySelector('[timeuntildisplaystring]'))) {
-                                        relevantMutation = true;
-                                    }
-                                }
-                            });
-                        });
-                    }
-                }
+		const observer = new MutationObserver((mutations) => {
+			try {
+				let relevantMutation = false;
+				for (const mutation of mutations) {
+					// Check added/removed nodes for reminder elements
+					if (mutation.addedNodes || mutation.removedNodes) {
+						const nodeLists = [
+							mutation.addedNodes,
+							mutation.removedNodes,
+						].filter(Boolean);
+						nodeLists.forEach((nodeList) => {
+							nodeList.forEach((node) => {
+								if (node.nodeType === 1) {
+									if (
+										(node.hasAttribute &&
+											node.hasAttribute("timeuntildisplaystring")) ||
+										(node.querySelector &&
+											node.querySelector("[timeuntildisplaystring]"))
+									) {
+										relevantMutation = true;
+									}
+								}
+							});
+						});
+					}
+				}
 
-                if (relevantMutation) {
-                    debouncedCheck();
-                }
-            } catch (e) {
-                console.error('[Reminder Counter] ERROR inside Observer callback:', e);
-            }
-        });
+				if (relevantMutation) {
+					debouncedCheck();
+				}
+			} catch (e) {
+				console.error("[Reminder Counter] ERROR inside Observer callback:", e);
+			}
+		});
 
-        // Observe the document for reminder changes
-        const targetNode = document.documentElement || document;
-        observer.observe(targetNode, {
-            childList: true,
-            subtree: true
-        });
+		// Observe the document for reminder changes
+		const targetNode = document.documentElement || document;
+		observer.observe(targetNode, {
+			childList: true,
+			subtree: true,
+		});
 
-        // Initial check after a delay
-        setTimeout(checkReminderCount, 1000);
-
-    } catch (e) {
-        console.error('[Reminder Counter] CRITICAL ERROR during setup:', e);
-    }
+		// Initial check after a delay
+		setTimeout(checkReminderCount, 1000);
+	} catch (e) {
+		console.error("[Reminder Counter] CRITICAL ERROR during setup:", e);
+	}
 }
 
 /**
@@ -514,79 +656,86 @@ function setupReminderCountObserver(ipcRenderer, accountId) {
  * @param {Electron.IpcRenderer} ipcRenderer
  */
 function detectAccountEmail(accountId, ipcRenderer) {
-    let foundEmail = null;
-    let emailSent = false;
+	let foundEmail = null;
+	let emailSent = false;
 
-    function checkEmail() {
-        try {
-            // First, try to find the primaryMailboxRoot element
-            const primaryMailboxRoot = document.querySelector('[id^="primaryMailboxRoot_"]');
-            if (primaryMailboxRoot) {
-                // Get direct child spans only (not nested inside buttons or other elements)
-                const emailSpan = Array.from(primaryMailboxRoot.children).find(child => child.tagName === 'SPAN');
+	function checkEmail() {
+		try {
+			// First, try to find the primaryMailboxRoot element
+			const primaryMailboxRoot = document.querySelector(
+				'[id^="primaryMailboxRoot_"]',
+			);
+			if (primaryMailboxRoot) {
+				// Get direct child spans only (not nested inside buttons or other elements)
+				const emailSpan = Array.from(primaryMailboxRoot.children).find(
+					(child) => child.tagName === "SPAN",
+				);
 
-                if (emailSpan) {
-                    // Get textContent from the direct child span
-                    const text = emailSpan.textContent?.trim() || '';
+				if (emailSpan) {
+					// Get textContent from the direct child span
+					const text = emailSpan.textContent?.trim() || "";
 
-                    // Check if it's an email address
-                    const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/);
-                    if (emailMatch) {
-                        const email = emailMatch[0];
-                        if (foundEmail !== email) {
-                            foundEmail = email;
-                            if (!emailSent) {
-                                emailSent = true;
-                                ipcRenderer.invoke('account-email-detected', { accountId, email });
-                            }
-                            return;
-                        }
-                    }
-                }
-            }
+					// Check if it's an email address
+					const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/);
+					if (emailMatch) {
+						const email = emailMatch[0];
+						if (foundEmail !== email) {
+							foundEmail = email;
+							if (!emailSent) {
+								emailSent = true;
+								ipcRenderer.invoke("account-email-detected", {
+									accountId,
+									email,
+								});
+							}
+							return;
+						}
+					}
+				}
+			}
 
-            // Fallback: check page title
-            const title = document.title || '';
-            const emailMatch = title.match(/[\w.-]+@[\w.-]+\.\w+/);
-            if (emailMatch) {
-                const email = emailMatch[0];
-                if (!emailSent) {
-                    emailSent = true;
-                    ipcRenderer.invoke('account-email-detected', { accountId, email });
-                }
-            }
-        } catch (e) {
-            console.error('[Account Email Detection] Error:', e);
-        }
-    }
+			// Fallback: check page title
+			const title = document.title || "";
+			const emailMatch = title.match(/[\w.-]+@[\w.-]+\.\w+/);
+			if (emailMatch) {
+				const email = emailMatch[0];
+				if (!emailSent) {
+					emailSent = true;
+					ipcRenderer.invoke("account-email-detected", { accountId, email });
+				}
+			}
+		} catch (e) {
+			console.error("[Account Email Detection] Error:", e);
+		}
+	}
 
-    // Check once immediately
-    checkEmail();
+	// Check once immediately
+	checkEmail();
 
-    // Watch for primaryMailboxRoot to appear (if page is still loading)
-    // Wait for document.body to be available
-    const startObserver = () => {
-        if (!document.body) {
-            // Try again in 100ms
-            setTimeout(startObserver, 100);
-            return;
-        }
+	// Watch for primaryMailboxRoot to appear (if page is still loading)
+	// Wait for document.body to be available
+	const startObserver = () => {
+		if (!document.body) {
+			// Try again in 100ms
+			setTimeout(startObserver, 100);
+			return;
+		}
 
-        const observer = new MutationObserver(() => {
-            if (!emailSent) {
-                checkEmail();
-            }
-        });
+		const observer = new MutationObserver(() => {
+			if (!emailSent) {
+				checkEmail();
+			}
+		});
 
-        observer.observe(document.body, { childList: true, subtree: true });
+		observer.observe(document.body, { childList: true, subtree: true });
 
-        // Stop observing after 30 seconds to save resources
-        setTimeout(() => {
-            observer.disconnect();
-        }, 30000);
-    };
+		// Stop observing after 30 seconds to save resources
+		setTimeout(() => {
+			observer.disconnect();
+		}, 30000);
+	};
 
-    startObserver();
+	startObserver();
 }
 
 /**
@@ -594,7 +743,7 @@ function detectAccountEmail(accountId, ipcRenderer) {
  * @param {Electron.IpcRenderer} ipcRenderer
  */
 function initializeModules(config, ipcRenderer) {
-	require('./tools/zoom').init(config);
-	require('./tools/shortcuts').init(config);
-	require('./tools/settings').init(config, ipcRenderer);
+	require("./tools/zoom").init(config);
+	require("./tools/shortcuts").init(config);
+	require("./tools/settings").init(config, ipcRenderer);
 }

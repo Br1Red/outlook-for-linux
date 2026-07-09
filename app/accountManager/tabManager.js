@@ -34,13 +34,13 @@ class TabManager {
 		this.activeTabId = null;
 
 		/** @type {string|null} */
-		this.tabContainerId = 'tab-list';
+		this.tabContainerId = "tab-list";
 
 		// Track if tab bar has been injected
 		/** @type {boolean} */
 		this.tabBarInjected = false;
 
-		console.log('[TabManager] Initialized');
+		console.log("[TabManager] Initialized");
 	}
 
 	/**
@@ -49,14 +49,16 @@ class TabManager {
 	 * @returns {Electron.WebContents} The created web contents
 	 */
 	createTab(account) {
-		const { BrowserView, session } = require('electron');
-		const path = require('path');
+		const { BrowserView, session } = require("electron");
+		const path = require("path");
 
 		// Set display name based on existing tab count
 		const existingCount = this.tabs.size;
 		account.displayName = `Account ${existingCount + 1}`;
 
-		console.log(`[TabManager] Creating tab for account: ${account.displayName}`);
+		console.log(
+			`[TabManager] Creating tab for account: ${account.displayName}`,
+		);
 
 		// GLM-5 FIX 1: Pre-initialize session partition BEFORE creating BrowserView
 		const ses = session.fromPartition(account.partition);
@@ -67,17 +69,17 @@ class TabManager {
 		const browserView = new BrowserView({
 			webPreferences: {
 				partition: account.partition,
-				preload: path.join(__dirname, '..', 'browser', 'index.js'),
-				additionalArguments: [`--accountId=${account.id}`],  // GLM-5 FIX 2: Removed '--tab-mode'
-				plugins: true,              // CRITICAL: Required for Outlook auth
+				preload: path.join(__dirname, "..", "browser", "index.js"),
+				additionalArguments: [`--accountId=${account.id}`], // GLM-5 FIX 2: Removed '--tab-mode'
+				plugins: true, // CRITICAL: Required for Outlook auth
 				contextIsolation: false,
 				sandbox: false,
-				spellcheck: false
-			}
+				spellcheck: false,
+			},
 		});
 
 		// CRITICAL: Enable @electron/remote IMMEDIATELY after BrowserView creation
-		require('@electron/remote/main').enable(browserView.webContents);
+		require("@electron/remote/main").enable(browserView.webContents);
 
 		// Add BrowserView to main window
 		this.mainWindow.addBrowserView(browserView);
@@ -87,18 +89,23 @@ class TabManager {
 
 		// Handle opening links in external browser
 		tabWebContents.setWindowOpenHandler(({ url }) => {
-			const { shell } = require('electron');
+			const { shell } = require("electron");
 			shell.openExternal(url);
-			return { action: 'deny' };
+			return { action: "deny" };
+		});
+
+		// Forward hovered link URLs to the renderer for the link preview tooltip
+		tabWebContents.on("update-target-url", (_event, url) => {
+			tabWebContents.send("hover-link-url", { url: url || "" });
 		});
 
 		// Add context menu (right-click) for this tab
-		tabWebContents.on('context-menu', (event, params) => {
+		tabWebContents.on("context-menu", (_event, params) => {
 			this.showContextMenu(tabWebContents, params);
 		});
 
 		// Listen for scale factor changes (when moving to monitors with different DPI)
-		tabWebContents.on('preferred-frame-size-changed', () => {
+		tabWebContents.on("preferred-frame-size-changed", () => {
 			if (this.activeTabId === account.id) {
 				this.updateTabBounds();
 			}
@@ -109,7 +116,7 @@ class TabManager {
 			id: account.id,
 			webContents: tabWebContents,
 			element: browserView,
-			account: account
+			account: account,
 		});
 
 		// GLM-5 FIX 3: Wait for tab bar to be ready, then use setImmediate for reliable timing
@@ -142,7 +149,9 @@ class TabManager {
 
 		const tab = this.tabs.get(accountId);
 		if (this.activeTabId === accountId) {
-			console.log(`[TabManager] Tab already active: ${tab.account.displayName}`);
+			console.log(
+				`[TabManager] Tab already active: ${tab.account.displayName}`,
+			);
 			return;
 		}
 
@@ -231,7 +240,7 @@ class TabManager {
 				x: -10,
 				y: -10,
 				width: 0,
-				height: 0
+				height: 0,
 			});
 		}
 	}
@@ -246,7 +255,7 @@ class TabManager {
 			x: 0,
 			y: 28,
 			width: bounds.width,
-			height: bounds.height - 28
+			height: bounds.height - 28,
 		});
 	}
 
@@ -258,7 +267,7 @@ class TabManager {
 		if (activeTab && activeTab.element) {
 			const contentBounds = this.mainWindow.getContentBounds();
 			this.setBoundsForTab(activeTab, contentBounds);
-			console.log('[TabManager] Updated tab bounds:', contentBounds);
+			console.log("[TabManager] Updated tab bounds:", contentBounds);
 		}
 	}
 
@@ -271,19 +280,19 @@ class TabManager {
 		}
 
 		// Send update to renderer - get fresh display name from AccountManager
-		const tabsData = Array.from(this.tabs.values()).map(tab => {
+		const tabsData = Array.from(this.tabs.values()).map((tab) => {
 			// Get fresh account data to pick up any display name changes
 			const account = this.accountManager.getAccount(tab.id);
 			return {
 				id: tab.id,
 				displayName: account ? account.displayName : tab.account.displayName,
-				isActive: tab.id === this.activeTabId
+				isActive: tab.id === this.activeTabId,
 			};
 		});
 
-		this.mainWindow.webContents.send('update-tab-bar', {
+		this.mainWindow.webContents.send("update-tab-bar", {
 			activeTabId: this.activeTabId,
-			tabs: tabsData
+			tabs: tabsData,
 		});
 	}
 
@@ -319,60 +328,87 @@ class TabManager {
 	 * @param {Object} params
 	 */
 	showContextMenu(webContents, params) {
-		const { Menu, MenuItem } = require('electron');
+		const { Menu, MenuItem, clipboard, shell } = require("electron");
 		const menu = new Menu();
 
+		// Link-specific options
+		if (params.linkURL) {
+			menu.append(
+				new MenuItem({
+					label: "Open Link in Browser",
+					click: () => shell.openExternal(params.linkURL),
+				}),
+			);
+			menu.append(
+				new MenuItem({
+					label: "Copy Link",
+					click: () => clipboard.writeText(params.linkURL),
+				}),
+			);
+			menu.append(new MenuItem({ type: "separator" }));
+		}
+
 		// Add "Reload Page" option
-		menu.append(new MenuItem({
-			label: 'Reload Page',
-			accelerator: 'Ctrl+R',
-			click: () => {
-				webContents.reload();
-			}
-		}));
+		menu.append(
+			new MenuItem({
+				label: "Reload Page",
+				accelerator: "Ctrl+R",
+				click: () => {
+					webContents.reload();
+				},
+			}),
+		);
 
 		// Add "Go to Home" option
-		menu.append(new MenuItem({
-			label: 'Go to Home',
-			accelerator: 'Ctrl+Home',
-			click: () => {
-				webContents.loadURL(this.config.url);
-			}
-		}));
+		menu.append(
+			new MenuItem({
+				label: "Go to Home",
+				accelerator: "Ctrl+Home",
+				click: () => {
+					webContents.loadURL(this.config.url);
+				},
+			}),
+		);
 
-		menu.append(new MenuItem({ type: 'separator' }));
+		menu.append(new MenuItem({ type: "separator" }));
 
 		// Standard context menu items (if text is selected or in an input field)
 		if (params.isEditable || params.selectionText) {
 			if (params.misspelledWord) {
-				menu.append(new MenuItem({
-					label: 'Add to Dictionary',
-					click: () => {
-						webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord);
-					}
-				}));
-				menu.append(new MenuItem({ type: 'separator' }));
+				menu.append(
+					new MenuItem({
+						label: "Add to Dictionary",
+						click: () => {
+							webContents.session.addWordToSpellCheckerDictionary(
+								params.misspelledWord,
+							);
+						},
+					}),
+				);
+				menu.append(new MenuItem({ type: "separator" }));
 			}
 
 			if (params.isEditable) {
-				menu.append(new MenuItem({ label: 'Cut', role: 'cut' }));
-				menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
-				menu.append(new MenuItem({ label: 'Paste', role: 'paste' }));
+				menu.append(new MenuItem({ label: "Cut", role: "cut" }));
+				menu.append(new MenuItem({ label: "Copy", role: "copy" }));
+				menu.append(new MenuItem({ label: "Paste", role: "paste" }));
 			} else if (params.selectionText) {
-				menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+				menu.append(new MenuItem({ label: "Copy", role: "copy" }));
 			}
 
-			menu.append(new MenuItem({ type: 'separator' }));
+			menu.append(new MenuItem({ type: "separator" }));
 		}
 
 		// Add "Inspect Element" for debugging
 		if (this.config.webDebug) {
-			menu.append(new MenuItem({
-				label: 'Inspect Element',
-				click: () => {
-					webContents.inspectElement(params.x, params.y);
-				}
-			}));
+			menu.append(
+				new MenuItem({
+					label: "Inspect Element",
+					click: () => {
+						webContents.inspectElement(params.x, params.y);
+					},
+				}),
+			);
 		}
 
 		menu.popup({ window: this.mainWindow });
@@ -382,7 +418,7 @@ class TabManager {
 	 * Clean up resources
 	 */
 	destroy() {
-		console.log('[TabManager] Destroying...');
+		console.log("[TabManager] Destroying...");
 
 		// Destroy all webContents
 		this.tabs.forEach((tab) => {
@@ -393,7 +429,7 @@ class TabManager {
 		this.tabs.clear();
 		this.activeTabId = null;
 
-		console.log('[TabManager] Destroyed');
+		console.log("[TabManager] Destroyed");
 	}
 }
 
