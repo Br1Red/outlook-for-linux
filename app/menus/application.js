@@ -9,6 +9,14 @@ exports = module.exports = (Menus) => ({
 			type: 'separator',
 		},
 		{
+			label: 'New Message',
+			accelerator: 'ctrl+N',
+			click: () => Menus.openQuickCompose ? Menus.openQuickCompose() : null,
+		},
+		{
+			type: 'separator',
+		},
+		{
 			label: 'Open',
 			accelerator: 'ctrl+O',
 			click: () => Menus.open(),

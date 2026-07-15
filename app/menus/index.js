@@ -1,12 +1,12 @@
-const { app, Menu, dialog, session, ipcMain, Notification } = require('electron');
-const fs = require('fs'),
-	path = require('path');
-const application = require('./application');
-const preferences = require('./preferences');
-const help = require('./help');
-const Tray = require('./tray');
-const { LucidLog } = require('lucid-log');
-const connectionManager = require('../connectionManager');
+const { app, Menu, dialog, ipcMain, Notification } = require("electron");
+const fs = require("fs"),
+	path = require("path");
+const application = require("./application");
+const preferences = require("./preferences");
+const help = require("./help");
+const Tray = require("./tray");
+const { LucidLog } = require("lucid-log");
+const connectionManager = require("../connectionManager");
 
 class Menus {
 	constructor(window, config, iconPath, appConfig) {
@@ -22,8 +22,12 @@ class Menus {
 		 * @type {AccountManager|null}
 		 */
 		this.accountManager = null;
+		/**
+		 * @type {QuickCompose|null}
+		 */
+		this.quickCompose = null;
 		this.logger = new LucidLog({
-			levels: config.appLogLevels.split(',')
+			levels: config.appLogLevels.split(","),
 		});
 		this.initialize();
 	}
@@ -38,6 +42,29 @@ class Menus {
 	}
 
 	/**
+	 * Set quick compose reference
+	 * @param {QuickCompose} quickCompose
+	 */
+	setQuickCompose(quickCompose) {
+		this.quickCompose = quickCompose;
+		// Also set on tray if it exists
+		if (this.tray && this.tray.setQuickCompose) {
+			this.tray.setQuickCompose(quickCompose);
+		}
+	}
+
+	/**
+	 * Open quick compose dialog
+	 */
+	openQuickCompose() {
+		if (this.quickCompose) {
+			// Use focused account or first available
+			const accountId = this.accountManager?.focusedAccountId || null;
+			this.quickCompose.openDialog(accountId);
+		}
+	}
+
+	/**
 	 * Get account menu items for the Accounts menu
 	 * @returns {Array}
 	 */
@@ -45,9 +72,9 @@ class Menus {
 		if (!this.accountManager) {
 			return [
 				{
-					label: 'Add Account',
-					click: () => this.createAccount()
-				}
+					label: "Add Account",
+					click: () => this.createAccount(),
+				},
 			];
 		}
 
@@ -56,34 +83,34 @@ class Menus {
 
 		// Add Account
 		items.push({
-			label: 'Add Account',
-			click: () => this.createAccount()
+			label: "Add Account",
+			click: () => this.createAccount(),
 		});
 
-		items.push({ type: 'separator' });
+		items.push({ type: "separator" });
 
 		// List all accounts
-		accounts.forEach(account => {
+		accounts.forEach((account) => {
 			const label = account.email || account.displayName;
 			items.push({
-				label: `${label} ${account.autoRestore ? '✓' : ''}`,
+				label: `${label} ${account.autoRestore ? "✓" : ""}`,
 				submenu: [
 					{
-						label: 'Focus Window',
-						click: () => this.focusAccount(account.id)
+						label: "Focus Window",
+						click: () => this.focusAccount(account.id),
 					},
 					{
-						label: 'Auto-restore on startup',
-						type: 'checkbox',
+						label: "Auto-restore on startup",
+						type: "checkbox",
 						checked: account.autoRestore !== false,
-						click: () => this.toggleAutoRestore(account.id)
+						click: () => this.toggleAutoRestore(account.id),
 					},
-					{ type: 'separator' },
+					{ type: "separator" },
 					{
-						label: 'Remove Account',
-						click: () => this.removeAccount(account.id)
-					}
-				]
+						label: "Remove Account",
+						click: () => this.removeAccount(account.id),
+					},
+				],
 			});
 		});
 
@@ -98,10 +125,8 @@ class Menus {
 			const account = this.accountManager.createAccount();
 			this.logger.info(`Created account: ${account.displayName}`);
 		} else {
-			// Fallback: use IPC
-			const { ipcRenderer } = require('electron');
-			// This won't work in main process, so we need to handle it differently
-			this.logger.warn('Account manager not available');
+			// Fallback: use IPC (this branch is in the main process and cannot use ipcRenderer)
+			this.logger.warn("Account manager not available");
 		}
 	}
 
@@ -150,21 +175,23 @@ class Menus {
 		// Handle quit for multi-account mode
 		if (this.accountManager) {
 			if (clearStorage) {
-				const confirmed = dialog.showMessageBoxSync(null, {
-					buttons: ['Yes', 'No'],
-					title: 'Quit',
-					normalizeAccessKeys: true,
-					defaultId: 1,
-					cancelId: 1,
-					message: 'Are you sure you want to clear the storage before quitting?',
-					type: 'question'
-				}) === 0;
+				const confirmed =
+					dialog.showMessageBoxSync(null, {
+						buttons: ["Yes", "No"],
+						title: "Quit",
+						normalizeAccessKeys: true,
+						defaultId: 1,
+						cancelId: 1,
+						message:
+							"Are you sure you want to clear the storage before quitting?",
+						type: "question",
+					}) === 0;
 
 				if (confirmed) {
 					// Clear storage for all accounts
 					const accounts = this.accountManager.getAllAccounts();
 					for (const account of accounts) {
-						const { session } = require('electron');
+						const { session } = require("electron");
 						const accountSession = session.fromPartition(account.partition);
 						await accountSession.clearStorageData();
 					}
@@ -175,17 +202,21 @@ class Menus {
 			this.accountManager.closeAllWindows();
 		} else if (this.window) {
 			// Single account mode
-			clearStorage = clearStorage && dialog.showMessageBoxSync(this.window, {
-				buttons: ['Yes', 'No'],
-				title: 'Quit',
-				normalizeAccessKeys: true,
-				defaultId: 1,
-				cancelId: 1,
-				message: 'Are you sure you want to clear the storage before quitting?',
-				type: 'question'
-			}) === 0;
+			clearStorage =
+				clearStorage &&
+				dialog.showMessageBoxSync(this.window, {
+					buttons: ["Yes", "No"],
+					title: "Quit",
+					normalizeAccessKeys: true,
+					defaultId: 1,
+					cancelId: 1,
+					message:
+						"Are you sure you want to clear the storage before quitting?",
+					type: "question",
+				}) === 0;
 
 			if (clearStorage) {
+				const { session } = require("electron");
 				const defSession = session.fromPartition(this.config.partition);
 				await defSession.clearStorageData();
 			}
@@ -193,7 +224,7 @@ class Menus {
 			this.window.close();
 		} else {
 			// No window and no account manager, just quit
-			const { app } = require('electron');
+			const { app } = require("electron");
 			app.quit();
 		}
 	}
@@ -214,22 +245,27 @@ class Menus {
 		const appInfo = [];
 		appInfo.push(`outlook-for-linux@${app.getVersion()}\n`);
 		for (const prop in process.versions) {
-			if (prop === 'node' || prop === 'v8' || prop === 'electron' || prop === 'chrome') {
+			if (
+				prop === "node" ||
+				prop === "v8" ||
+				prop === "electron" ||
+				prop === "chrome"
+			) {
 				appInfo.push(`${prop}: ${process.versions[prop]}`);
 			}
 		}
-		const targetWindow = this.accountManager ?
-			this.accountManager.getAllAccounts().find(a => a.window)?.window :
-			this.window;
+		const targetWindow = this.accountManager
+			? this.accountManager.getAllAccounts().find((a) => a.window)?.window
+			: this.window;
 		dialog.showMessageBoxSync(targetWindow || null, {
-			buttons: ['OK'],
-			title: 'About',
+			buttons: ["OK"],
+			title: "About",
 			icon: this.iconPath,
 			normalizeAccessKeys: true,
 			defaultId: 0,
 			cancelId: 0,
-			message: appInfo.join('\n'),
-			type: 'info'
+			message: appInfo.join("\n"),
+			type: "info",
 		});
 	}
 
@@ -237,7 +273,7 @@ class Menus {
 		if (this.accountManager) {
 			// Reload all account windows
 			const accounts = this.accountManager.getAllAccounts();
-			accounts.forEach(account => {
+			accounts.forEach((account) => {
 				if (account.window && !account.window.isDestroyed()) {
 					if (show) account.window.show();
 					account.window.reload();
@@ -255,7 +291,9 @@ class Menus {
 		if (this.accountManager) {
 			// Open DevTools for first account window
 			const accounts = this.accountManager.getAllAccounts();
-			const firstAccount = accounts.find(a => a.window && !a.window.isDestroyed());
+			const firstAccount = accounts.find(
+				(a) => a.window && !a.window.isDestroyed(),
+			);
 			if (firstAccount) {
 				firstAccount.window.openDevTools();
 			}
@@ -268,7 +306,7 @@ class Menus {
 		if (this.accountManager) {
 			// Hide all account windows
 			const accounts = this.accountManager.getAllAccounts();
-			accounts.forEach(account => {
+			accounts.forEach((account) => {
 				if (account.window && !account.window.isDestroyed()) {
 					account.window.hide();
 				}
@@ -283,14 +321,16 @@ class Menus {
 
 		// Only set menu if window exists
 		if (this.window) {
-			if (this.config.menubar === 'hidden') {
+			if (this.config.menubar === "hidden") {
 				this.window.removeMenu();
 			} else {
-				this.window.setMenu(Menu.buildFromTemplate([
-					appMenu,
-					preferences(),
-					help(app, this.window),
-				]));
+				this.window.setMenu(
+					Menu.buildFromTemplate([
+						appMenu,
+						preferences(),
+						help(app, this.window),
+					]),
+				);
 			}
 
 			this.initializeEventHandlers();
@@ -310,25 +350,25 @@ class Menus {
 	 * @param {number} count - Number of unread items
 	 * @param {string} type - Badge type ('email' or 'reminder')
 	 */
-	updateTrayBadge(count, type = 'email') {
+	updateTrayBadge(count, type = "email") {
 		if (this.tray) {
 			this.tray.updateBadge(count, type);
 		}
 	}
 
 	testNotification() {
-		this.logger.info('Testing native notification');
+		this.logger.info("Testing native notification");
 
 		try {
 			const notification = new Notification({
-				title: 'Test Notification',
-				body: 'This is a test notification using native Electron Notification!',
+				title: "Test Notification",
+				body: "This is a test notification using native Electron Notification!",
 				icon: this.iconPath,
-				urgency: 'normal',
+				urgency: "normal",
 			});
 
-			notification.on('click', () => {
-				this.logger.info('Notification has been clicked');
+			notification.on("click", () => {
+				this.logger.info("Notification has been clicked");
 				if (this.accountManager) {
 					this.accountManager.showAllWindows();
 				} else if (this.window) {
@@ -337,35 +377,48 @@ class Menus {
 				}
 			});
 
-			notification.on('close', () => {
-				this.logger.info('Notification has been closed');
+			notification.on("close", () => {
+				this.logger.info("Notification has been closed");
 			});
 
 			notification.show();
-			this.logger.info('Notification created successfully');
+			this.logger.info("Notification created successfully");
 		} catch (error) {
-			this.logger.error('Error creating notification:', error);
-			this.logger.error('Stack:', error.stack);
+			this.logger.error("Error creating notification:", error);
+			this.logger.error("Stack:", error.stack);
 		}
 	}
 
 	initializeEventHandlers() {
-		app.on('before-quit', () => this.onBeforeQuit());
-		ipcMain.on('get-outlook-settings', saveSettingsInternal);
-		ipcMain.on('set-outlook-settings', restoreSettingsInternal);
+		app.on("before-quit", () => this.onBeforeQuit());
+		ipcMain.on("get-outlook-settings", saveSettingsInternal);
+		ipcMain.on("set-outlook-settings", restoreSettingsInternal);
 		// Only attach close handler if we have a window (single account mode)
 		if (this.window) {
-			this.window.on('close', (event) => this.onClose(event));
+			this.window.on("close", (event) => this.onClose(event));
 		}
 	}
 
 	onBeforeQuit() {
-		this.logger.debug('before-quit');
+		this.logger.debug("before-quit");
 		this.allowQuit = true;
+		this.flushAllSessions();
+	}
+
+	flushAllSessions() {
+		const { session } = require("electron");
+		if (this.accountManager) {
+			this.accountManager.getAllAccounts().forEach((account) => {
+				const accountSession = session.fromPartition(account.partition);
+				accountSession.flushStorageData();
+			});
+		} else if (this.window) {
+			this.window.webContents.session.flushStorageData();
+		}
 	}
 
 	onClose(event) {
-		this.logger.debug('window close');
+		this.logger.debug("window close");
 		if (!this.allowQuit && !this.config.closeAppOnCross) {
 			event.preventDefault();
 			this.hide();
@@ -381,52 +434,58 @@ class Menus {
 		if (this.accountManager) {
 			// Send to all account windows
 			const accounts = this.accountManager.getAllAccounts();
-			accounts.forEach(account => {
+			accounts.forEach((account) => {
 				if (account.window && !account.window.isDestroyed()) {
-					account.window.webContents.send('get-outlook-settings');
+					account.window.webContents.send("get-outlook-settings");
 				}
 			});
 		} else if (this.window) {
-			this.window.webContents.send('get-outlook-settings');
+			this.window.webContents.send("get-outlook-settings");
 		}
 	}
 
 	restoreSettings() {
-		const settingsPath = path.join(app.getPath('userData'), 'outlook_settings.json');
+		const settingsPath = path.join(
+			app.getPath("userData"),
+			"outlook_settings.json",
+		);
 		try {
 			const settings = JSON.parse(fs.readFileSync(settingsPath));
 			if (this.accountManager) {
 				// Send to all account windows
 				const accounts = this.accountManager.getAllAccounts();
-				accounts.forEach(account => {
+				accounts.forEach((account) => {
 					if (account.window && !account.window.isDestroyed()) {
-						account.window.webContents.send('set-outlook-settings', settings);
+						account.window.webContents.send("set-outlook-settings", settings);
 					}
 				});
 			} else if (this.window) {
-				this.window.webContents.send('set-outlook-settings', settings);
+				this.window.webContents.send("set-outlook-settings", settings);
 			}
 		} catch (e) {
-			this.logger.error('Error loading settings:', e);
+			this.logger.error("Error loading settings:", e);
 		}
 	}
 }
 
-function saveSettingsInternal(event, arg) {
-	fs.writeFileSync(path.join(app.getPath('userData'), 'outlook_settings.json'), JSON.stringify(arg));
+function saveSettingsInternal(_event, arg) {
+	fs.writeFileSync(
+		path.join(app.getPath("userData"), "outlook_settings.json"),
+		JSON.stringify(arg),
+	);
 	dialog.showMessageBoxSync(this.window, {
-		message: 'Settings have been saved successfully!',
-		title: 'Save settings',
-		type: 'info'
+		message: "Settings have been saved successfully!",
+		title: "Save settings",
+		type: "info",
 	});
 }
 
-function restoreSettingsInternal(event, arg) {
+function restoreSettingsInternal(_event, arg) {
 	if (arg) {
 		dialog.showMessageBoxSync(this.window, {
-			message: 'Settings have been restored successfully!',
-			title: 'Restore settings',
-			type: 'info'
+			message: "Settings have been restored successfully!",
+			title: "Restore settings",
+			type: "info",
 		});
 	}
 }

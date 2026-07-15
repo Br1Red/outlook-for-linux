@@ -1,8 +1,17 @@
-const { Tray, Menu, nativeImage, dialog, nativeTheme, app } = require('electron');
-const { saveConfigFile } = require('../config');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
+const {
+	Tray,
+	Menu,
+	nativeImage,
+	dialog,
+	nativeTheme,
+	app,
+} = require("electron");
+const { saveConfigFile } = require("../config");
+const dndManager = require("../utils/dnd");
+const notificationModule = require("../notification");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 
 class ApplicationTray {
 	constructor(window, appMenu, iconPath, config) {
@@ -17,6 +26,10 @@ class ApplicationTray {
 		 * @type {AccountManager|null}
 		 */
 		this.accountManager = null;
+		/**
+		 * @type {QuickCompose|null}
+		 */
+		this.quickCompose = null;
 		/**
 		 * Cache to prevent unnecessary menu rebuilds
 		 */
@@ -40,31 +53,39 @@ class ApplicationTray {
 		this.updateMenu();
 	}
 
+	/**
+	 * Set the quick compose reference
+	 * @param {QuickCompose} quickCompose
+	 */
+	setQuickCompose(quickCompose) {
+		this.quickCompose = quickCompose;
+	}
+
 	addTray() {
+		// Use a unique temp copy of the icon to avoid StatusNotifierItem/theme collisions
+		// with other Electron apps (e.g., Teams for Linux) on some desktop environments.
+		let iconPathToUse = this.iconPath;
+		try {
+			const uniqueIconPath = path.join(
+				os.tmpdir(),
+				`outlook-for-linux-tray-${process.pid}-${path.basename(this.iconPath)}`,
+			);
+			fs.copyFileSync(this.iconPath, uniqueIconPath);
+			iconPathToUse = uniqueIconPath;
+		} catch (_) {
+			// Best-effort; fall back to the bundled icon.
+		}
 
-        // Use NativeImage instead of a string path to reduce icon-name / theme caching
-        // quirks in AppIndicator / StatusNotifierItem hosts (common on some DE panels).
-        let iconPathToUse = this.iconPath;
-        try {
-            const uniqueIconPath = path.join(
-                os.tmpdir(),
-                `outlook-for-linux-tray-${process.pid}-${path.basename(this.iconPath)}`
-            );
-            fs.copyFileSync(this.iconPath, uniqueIconPath);
-            iconPathToUse = uniqueIconPath;
-        } catch (_) {
-            // Best-effort only; fall back to original path.
-        }
+		const base = nativeImage.createFromPath(iconPathToUse);
+		const trayImage =
+			base && !base.isEmpty() && typeof base.resize === "function"
+				? base.resize({ width: 24, height: 24 })
+				: base;
+		this.baseTrayImage = trayImage;
 
-        const base = nativeImage.createFromPath(iconPathToUse);
-        const trayImage = (base && !base.isEmpty && typeof base.resize === 'function')
-            ? base.resize({ width: 24, height: 24 })
-            : base;
-
-	    this.baseTrayImage = trayImage;
-        this.tray = new Tray(trayImage);
-		this.tray.setToolTip('Microsoft Outlook');
-		this.tray.on('click', () => this.showAndFocusWindow());
+		this.tray = new Tray(trayImage);
+		this.tray.setToolTip("Microsoft Outlook");
+		this.tray.on("click", () => this.showAndFocusWindow());
 		this.tray.setContextMenu(Menu.buildFromTemplate(this.buildMenu()));
 	}
 
@@ -75,117 +96,137 @@ class ApplicationTray {
 	buildMenu() {
 		const menu = [];
 
-			// Open
+		// New Message (Quick Compose)
 		menu.push({
-			label: 'Open',
-			click: () => this.showAllWindows()
+			label: "New Message",
+			click: () => this.openQuickCompose(),
+		});
+
+		menu.push({ type: "separator" });
+
+		// Open
+		menu.push({
+			label: "Open",
+			click: () => this.showAllWindows(),
 		});
 
 		// Refresh
 		menu.push({
-			label: 'Refresh',
-			click: () => this.reload()
+			label: "Refresh",
+			click: () => this.reload(),
 		});
 
 		// Hide
 		menu.push({
-			label: 'Hide',
-			click: () => this.hideAllWindows()
+			label: "Hide",
+			click: () => this.hideAllWindows(),
 		});
 
-		menu.push({ type: 'separator' });
+		menu.push({ type: "separator" });
+
+		// Clear notifications
+		menu.push({
+			label: "Clear Notifications",
+			click: () => notificationModule.reset(),
+		});
+
+		menu.push({ type: "separator" });
 
 		// Accounts submenu
 		if (this.accountManager) {
 			const accounts = this.accountManager.getAllAccounts();
 
 			if (accounts.length > 0) {
-				accounts.forEach(account => {
-					const label = account.displayName + '      ';
+				accounts.forEach((account) => {
+					const label = account.displayName + "      ";
 					menu.push({
 						label: label,
 						submenu: [
 							{
-								label: 'Focus Window',
-								click: () => this.focusAccount(account.id)
+								label: "Focus Window",
+								click: () => this.focusAccount(account.id),
 							},
 							{
-								label: 'Rename Account...',
-								click: () => this.renameAccount(account)
+								label: "Rename Account...",
+								click: () => this.renameAccount(account),
 							},
 							{
-								label: 'Auto-restore on startup',
-								type: 'checkbox',
+								label: "Auto-restore on startup",
+								type: "checkbox",
 								checked: account.autoRestore !== false,
-								click: () => this.toggleAutoRestore(account.id)
+								click: () => this.toggleAutoRestore(account.id),
 							},
-							{ type: 'separator' },
+							{ type: "separator" },
 							{
-								label: 'Remove Account',
-								click: () => this.removeAccount(account.id)
-							}
-						]
+								label: "Remove Account",
+								click: () => this.removeAccount(account.id),
+							},
+						],
 					});
 				});
 
-				menu.push({ type: 'separator' });
+				menu.push({ type: "separator" });
 			}
 
 			menu.push({
-				label: 'Add Account...',
-				click: () => this.createAccount()
+				label: "Add Account...",
+				click: () => this.createAccount(),
 			});
 		}
 
-		menu.push({ type: 'separator' });
+		menu.push({ type: "separator" });
 
 		// Tabbed mode toggle
 		menu.push({
-			label: 'Tabbed Mode',
-			type: 'checkbox',
+			label: "Tabbed Mode",
+			type: "checkbox",
 			checked: this.config.tabbedMode || false,
-			click: () => this.toggleTabbedMode()
+			click: () => this.toggleTabbedMode(),
 		});
 
-		menu.push({ type: 'separator' });
+		// Do Not Disturb toggle
+		menu.push({
+			label: "Do Not Disturb",
+			type: "checkbox",
+			checked: dndManager.manualDND,
+			click: () => this.toggleDND(),
+		});
+
+		// Run in background (hide to tray instead of quitting on close)
+		menu.push({
+			label: "Run in Background",
+			type: "checkbox",
+			checked: !this.config.closeAppOnCross,
+			click: () => this.toggleRunInBackground(),
+		});
+
+		menu.push({ type: "separator" });
 
 		// About
 		menu.push({
-			label: 'About',
-			click: () => this.showAbout()
+			label: "About",
+			click: () => this.showAbout(),
 		});
 
 		// Quit
 		menu.push({
-			label: 'Quit',
+			label: "Quit",
 			click: () => {
-				const { app } = require('electron');
+				const { app } = require("electron");
 				app.quit();
-			}
+			},
 		});
 
 		return menu;
 	}
 
 	/**
-	 * Update the tray menu (call when accounts change)
+	 * Update the tray menu (call when accounts or toggle state change)
 	 */
 	updateMenu() {
 		if (!this.tray) return;
-
-		// Calculate current accounts hash to detect changes
-		let currentHash = null;
-		if (this.accountManager) {
-			const accounts = this.accountManager.getAllAccounts();
-			currentHash = accounts.map(a => `${a.id}:${a.email || ''}:${a.displayName}:${a.autoRestore}`).join('|');
-		}
-
-		// Only rebuild menu if accounts have changed
-		if (currentHash !== this.lastAccountsHash) {
-			this.lastAccountsHash = currentHash;
-			this.lastMenuTemplate = this.buildMenu();
-			this.tray.setContextMenu(Menu.buildFromTemplate(this.lastMenuTemplate));
-		}
+		this.lastMenuTemplate = this.buildMenu();
+		this.tray.setContextMenu(Menu.buildFromTemplate(this.lastMenuTemplate));
 	}
 
 	/**
@@ -207,7 +248,7 @@ class ApplicationTray {
 	reload() {
 		if (this.accountManager) {
 			const accounts = this.accountManager.getAllAccounts();
-			accounts.forEach(account => {
+			accounts.forEach((account) => {
 				if (account.window && !account.window.isDestroyed()) {
 					account.window.show();
 					account.window.reload();
@@ -225,7 +266,7 @@ class ApplicationTray {
 	hideAllWindows() {
 		if (this.accountManager) {
 			const accounts = this.accountManager.getAllAccounts();
-			accounts.forEach(account => {
+			accounts.forEach((account) => {
 				if (account.window && !account.window.isDestroyed()) {
 					account.window.hide();
 				}
@@ -243,18 +284,21 @@ class ApplicationTray {
 		if (this.accountManager) {
 			const account = this.accountManager.getAccount(accountId);
 			if (!account) {
-				console.error('[Tray] Account not found:', accountId);
+				console.error("[Tray] Account not found:", accountId);
 				return;
 			}
 
 			// In tabbed mode, switch to the tab
 			if (this.accountManager.tabbedMode) {
-				console.log('[Tray] Switching to tab:', account.displayName);
+				console.log("[Tray] Switching to tab:", account.displayName);
 				this.accountManager.focusAccount(accountId);
 			} else {
 				// Regular window mode
 				if (!account.window || account.window.isDestroyed()) {
-					console.log('[Tray] Creating window for account:', account.displayName);
+					console.log(
+						"[Tray] Creating window for account:",
+						account.displayName,
+					);
 					this.accountManager.createAccountWindow(account);
 				} else {
 					// Show and focus existing window
@@ -281,10 +325,11 @@ class ApplicationTray {
 	 */
 	renameAccount(account) {
 		if (this.accountManager) {
-			const { BrowserWindow } = require('electron');
+			const { BrowserWindow } = require("electron");
 
 			// In tabbed mode, use main tabbed window as parent
-			const parentWindow = this.accountManager.mainTabbedWindow || account.window || null;
+			const parentWindow =
+				this.accountManager.mainTabbedWindow || account.window || null;
 
 			// Create a simple input dialog
 			const inputDialog = new BrowserWindow({
@@ -297,29 +342,31 @@ class ApplicationTray {
 				autoHideMenuBar: true,
 				webPreferences: {
 					nodeIntegration: true,
-					contextIsolation: false
-				}
+					contextIsolation: false,
+				},
 			});
 
 			// Prepare values for template
 			const currentName = account.displayName;
-			const inputValue = account.manualDisplayName || '';
+			const inputValue = account.manualDisplayName || "";
 			const placeholder = account.manualDisplayName
-				? 'Leave empty to revert to auto-detection'
-				: 'Enter new name or leave empty for auto-detection';
+				? "Leave empty to revert to auto-detection"
+				: "Enter new name or leave empty for auto-detection";
 			const revertText = account.manualDisplayName
-				? `<p class="info-text">Leave empty to revert to auto-detection (${account.email || 'detected email'})</p>`
-				: '';
+				? `<p class="info-text">Leave empty to revert to auto-detection (${account.email || "detected email"})</p>`
+				: "";
 
 			// Get dark mode preference
 			const isDarkMode = nativeTheme.shouldUseDarkColors;
 
 			// Load a simple HTML page with an input form
-			inputDialog.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`
+			inputDialog.loadURL(
+				"data:text/html;charset=utf-8," +
+					encodeURIComponent(`
 				<!DOCTYPE html>
 				<html>
 				<head>
-					<meta name="color-scheme" content="${isDarkMode ? 'dark' : 'light'}">
+					<meta name="color-scheme" content="${isDarkMode ? "dark" : "light"}">
 					<style>
 						* { box-sizing: border-box; }
 						body {
@@ -327,20 +374,20 @@ class ApplicationTray {
 							padding: 20px;
 							margin: 0;
 							overflow: hidden;
-							background-color: ${isDarkMode ? '#1e1e1e' : '#ffffff'};
-							color: ${isDarkMode ? '#e0e0e0' : '#000000'};
+							background-color: ${isDarkMode ? "#1e1e1e" : "#ffffff"};
+							color: ${isDarkMode ? "#e0e0e0" : "#000000"};
 						}
 						h2 { margin: 0 0 15px 0; font-size: 18px; }
 						p { margin: 5px 0; font-size: 14px; }
-						.info-text { font-size: 12px; color: ${isDarkMode ? '#aaa' : '#666'}; margin-bottom: 12px; }
+						.info-text { font-size: 12px; color: ${isDarkMode ? "#aaa" : "#666"}; margin-bottom: 12px; }
 						input {
 							width: 100%;
 							padding: 8px;
 							font-size: 14px;
 							margin: 12px 0;
-							background-color: ${isDarkMode ? '#2d2d2d' : '#ffffff'};
-							border: 1px solid ${isDarkMode ? '#444' : '#ccc'};
-							color: ${isDarkMode ? '#e0e0e0' : '#000000'};
+							background-color: ${isDarkMode ? "#2d2d2d" : "#ffffff"};
+							border: 1px solid ${isDarkMode ? "#444" : "#ccc"};
+							color: ${isDarkMode ? "#e0e0e0" : "#000000"};
 						}
 						input:focus { outline: 2px solid #0078d4; border-color: #0078d4; }
 						.buttons {
@@ -356,13 +403,13 @@ class ApplicationTray {
 							border-radius: 4px;
 						}
 						#cancel {
-							background: ${isDarkMode ? '#3a3a3a' : '#f0f0f0'};
-							border: 1px solid ${isDarkMode ? '#555' : '#ccc'};
-							color: ${isDarkMode ? '#e0e0e0' : '#000000'};
+							background: ${isDarkMode ? "#3a3a3a" : "#f0f0f0"};
+							border: 1px solid ${isDarkMode ? "#555" : "#ccc"};
+							color: ${isDarkMode ? "#e0e0e0" : "#000000"};
 						}
 						#rename { background: #0078d4; color: white; border: none; }
 						#rename:hover { background: #106ebe; }
-						#cancel:hover { background: ${isDarkMode ? '#4a4a4a' : '#e0e0e0'}; }
+						#cancel:hover { background: ${isDarkMode ? "#4a4a4a" : "#e0e0e0"}; }
 					</style>
 				</head>
 				<body>
@@ -398,27 +445,28 @@ class ApplicationTray {
 					</script>
 				</body>
 				</html>
-			`));
+			`),
+			);
 
 			// Handle the result
-			const { ipcMain } = require('electron');
+			const { ipcMain } = require("electron");
 			const handler = (_event, newName) => {
 				// Always allow submission (including empty) to let user clear manual override
 				if (newName !== null) {
 					this.accountManager.setAccountDisplayName(account.id, newName);
 				}
 				inputDialog.close();
-				ipcMain.removeListener('rename-account-result', handler);
+				ipcMain.removeListener("rename-account-result", handler);
 			};
 
-			ipcMain.once('rename-account-result', handler);
+			ipcMain.once("rename-account-result", handler);
 
 			// Handle window close
-			inputDialog.on('closed', () => {
-				ipcMain.removeListener('rename-account-result', handler);
+			inputDialog.on("closed", () => {
+				ipcMain.removeListener("rename-account-result", handler);
 			});
 
-			inputDialog.once('ready-to-show', () => {
+			inputDialog.once("ready-to-show", () => {
 				inputDialog.show();
 				inputDialog.focus();
 			});
@@ -440,13 +488,14 @@ class ApplicationTray {
 
 			// Confirm before removing
 			const result = dialog.showMessageBoxSync({
-				type: 'warning',
-				buttons: ['Cancel', 'Remove Account'],
+				type: "warning",
+				buttons: ["Cancel", "Remove Account"],
 				defaultId: 0,
 				cancelId: 0,
-				title: 'Remove Account',
+				title: "Remove Account",
 				message: `Are you sure you want to remove "${label}"?`,
-				detail: 'This will close the account window and remove it from the account list. You can add it again later.'
+				detail:
+					"This will close the account window and remove it from the account list. You can add it again later.",
 			});
 
 			if (result === 1) {
@@ -468,22 +517,22 @@ class ApplicationTray {
 	 * Toggle tabbed mode (requires restart)
 	 */
 	toggleTabbedMode() {
-		const { dialog } = require('electron');
+		const { dialog } = require("electron");
 		const newValue = !this.config.tabbedMode;
 
 		// Update config
 		this.config.tabbedMode = newValue;
 
 		// Save to config file
-		saveConfigFile(app.getPath('userData'), { tabbedMode: newValue });
+		saveConfigFile(app.getPath("userData"), { tabbedMode: newValue });
 
 		// Show restart dialog
 		dialog.showMessageBoxSync({
-			type: 'info',
-			buttons: ['OK'],
-			title: 'Tabbed Mode',
-			message: `Tabbed mode has been ${newValue ? 'enabled' : 'disabled'}.`,
-			detail: 'Please restart the application for this change to take effect.'
+			type: "info",
+			buttons: ["OK"],
+			title: "Tabbed Mode",
+			message: `Tabbed mode has been ${newValue ? "enabled" : "disabled"}.`,
+			detail: "Please restart the application for this change to take effect.",
 		});
 
 		// Update menu to show new state
@@ -491,14 +540,50 @@ class ApplicationTray {
 	}
 
 	/**
+	 * Toggle Do Not Disturb mode
+	 */
+	toggleDND() {
+		const newState = dndManager.toggleManualDND();
+
+		// Show brief notification
+		const { Notification } = require("electron");
+		const status = newState ? "enabled" : "disabled";
+		new Notification({
+			title: `Do Not Disturb ${status}`,
+			body: newState
+				? "Notifications will be suppressed"
+				: "Notifications will resume",
+			silent: true,
+		}).show();
+
+		// Update menu to show new state
+		this.updateMenu();
+	}
+
+	/**
+	 * Toggle hide-to-tray behavior when closing the window
+	 */
+	toggleRunInBackground() {
+		const newValue = !this.config.closeAppOnCross;
+		this.config.closeAppOnCross = newValue;
+		saveConfigFile(app.getPath("userData"), { closeAppOnCross: newValue });
+		this.updateMenu();
+	}
+
+	/**
 	 * Show About dialog
 	 */
 	showAbout() {
-		const { app, dialog } = require('electron');
+		const { app, dialog } = require("electron");
 		const appInfo = [];
 		appInfo.push(`outlook-for-linux@${app.getVersion()}\n`);
 		for (const prop in process.versions) {
-			if (prop === 'node' || prop === 'v8' || prop === 'electron' || prop === 'chrome') {
+			if (
+				prop === "node" ||
+				prop === "v8" ||
+				prop === "electron" ||
+				prop === "chrome"
+			) {
 				appInfo.push(`${prop}: ${process.versions[prop]}`);
 			}
 		}
@@ -507,7 +592,9 @@ class ApplicationTray {
 		let targetWindow = null;
 		if (this.accountManager) {
 			const accounts = this.accountManager.getAllAccounts();
-			const firstAccount = accounts.find(a => a.window && !a.window.isDestroyed());
+			const firstAccount = accounts.find(
+				(a) => a.window && !a.window.isDestroyed(),
+			);
 			if (firstAccount) {
 				targetWindow = firstAccount.window;
 			}
@@ -516,13 +603,13 @@ class ApplicationTray {
 		}
 
 		dialog.showMessageBoxSync(targetWindow || null, {
-			buttons: ['OK'],
-			title: 'About',
+			buttons: ["OK"],
+			title: "About",
 			icon: this.iconPath,
 			defaultId: 0,
 			cancelId: 0,
-			message: appInfo.join('\n'),
-			type: 'info'
+			message: appInfo.join("\n"),
+			type: "info",
 		});
 	}
 
@@ -531,7 +618,7 @@ class ApplicationTray {
 	 * @param {number} count - Number to display on the badge
 	 * @param {string} type - 'email' or 'reminder' (default: 'email')
 	 */
-	async updateBadge(count, type = 'email') {
+	async updateBadge(count, type = "email") {
 		// Skip update if count and type haven't changed
 		if (this.lastBadgeCount === count && this.lastBadgeType === type) {
 			return;
@@ -545,7 +632,9 @@ class ApplicationTray {
 
 		if (this.accountManager && !windowForBadge) {
 			const accounts = this.accountManager.getAllAccounts();
-			const firstAccount = accounts.find(a => a.window && !a.window.isDestroyed());
+			const firstAccount = accounts.find(
+				(a) => a.window && !a.window.isDestroyed(),
+			);
 			if (firstAccount) {
 				windowForBadge = firstAccount.window;
 			}
@@ -553,10 +642,11 @@ class ApplicationTray {
 
 		if (count > 0 && windowForBadge && windowForBadge.webContents) {
 			// Determine badge color based on type
-			const badgeColor = type === 'reminder' ? '#FF6600' : '#FF0000'; // Orange for reminders, red for emails
-			const tooltipText = type === 'reminder'
-				? `Microsoft Outlook - ${count} active reminder${count > 1 ? 's' : ''}`
-				: `Microsoft Outlook - ${count} unread email${count > 1 ? 's' : ''}`;
+			const badgeColor = type === "reminder" ? "#FF6600" : "#FF0000"; // Orange for reminders, red for emails
+			const tooltipText =
+				type === "reminder"
+					? `Microsoft Outlook - ${count} active reminder${count > 1 ? "s" : ""}`
+					: `Microsoft Outlook - ${count} unread email${count > 1 ? "s" : ""}`;
 
 			// Get icon data URL first
 			const iconDataURL = nativeImage.createFromPath(this.iconPath).toDataURL();
@@ -603,22 +693,24 @@ class ApplicationTray {
 								resolve(canvas.toDataURL());
 							};
 						});
-					})(${JSON.stringify(iconDataURL)}, ${JSON.stringify(badgeColor)}, ${count})`
+					})(${JSON.stringify(iconDataURL)}, ${JSON.stringify(badgeColor)}, ${count})`,
 				);
 
 				const image = nativeImage.createFromDataURL(dataURL);
 				this.tray.setImage(image);
 				this.tray.setToolTip(tooltipText);
 			} catch (err) {
-				console.error('[Tray] Failed to render badge:', err);
-				console.error('[Tray] Badge color:', badgeColor);
-				console.error('[Tray] Count:', count);
-				console.error('[Tray] Type:', type);
+				console.error("[Tray] Failed to render badge:", err);
+				console.error("[Tray] Badge color:", badgeColor);
+				console.error("[Tray] Count:", count);
+				console.error("[Tray] Type:", type);
 			}
 		} else {
 			// Reset to original icon
-		    this.tray.setImage(this.baseTrayImage || nativeImage.createFromPath(this.iconPath));
-			this.tray.setToolTip('Microsoft Outlook');
+			this.tray.setImage(
+				this.baseTrayImage || nativeImage.createFromPath(this.iconPath),
+			);
+			this.tray.setToolTip("Microsoft Outlook");
 		}
 	}
 
@@ -627,7 +719,10 @@ class ApplicationTray {
 			const accounts = this.accountManager.getAllAccounts();
 
 			// In tabbed mode, show main tabbed window directly
-			if (this.accountManager.tabbedMode && this.accountManager.mainTabbedWindow) {
+			if (
+				this.accountManager.tabbedMode &&
+				this.accountManager.mainTabbedWindow
+			) {
 				const mainWin = this.accountManager.mainTabbedWindow;
 				if (!mainWin.isDestroyed()) {
 					if (mainWin.isMinimized()) {
@@ -658,12 +753,15 @@ class ApplicationTray {
 	 * @param {Array} accounts - List of accounts
 	 */
 	showAccountSelectionDialog(accounts) {
-		const { BrowserWindow, ipcMain } = require('electron');
+		const { BrowserWindow, ipcMain } = require("electron");
 
 		// Calculate height based on number of accounts + show all button
 		const baseHeight = 140;
 		const accountHeight = 45;
-		const height = Math.min(baseHeight + ((accounts.length + 1) * accountHeight), 500);
+		const height = Math.min(
+			baseHeight + (accounts.length + 1) * accountHeight,
+			500,
+		);
 
 		// Get dark mode preference
 		const isDarkMode = nativeTheme.shouldUseDarkColors;
@@ -676,35 +774,40 @@ class ApplicationTray {
 			modal: false,
 			show: false,
 			autoHideMenuBar: true,
-			title: 'Select Account',
-			backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
+			title: "Select Account",
+			backgroundColor: isDarkMode ? "#1e1e1e" : "#ffffff",
 			webPreferences: {
 				nodeIntegration: true,
-				contextIsolation: false
-			}
+				contextIsolation: false,
+			},
 		});
 
 		// Build account buttons HTML
-		const accountButtons = accounts.map((a, i) =>
-			`<button class="account-btn" data-index="${i}" data-id="${a.id}">${a.displayName}</button>`
-		).join('');
+		const accountButtons = accounts
+			.map(
+				(a, i) =>
+					`<button class="account-btn" data-index="${i}" data-id="${a.id}">${a.displayName}</button>`,
+			)
+			.join("");
 
-		selectDialog.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`
+		selectDialog.loadURL(
+			"data:text/html;charset=utf-8," +
+				encodeURIComponent(`
 			<!DOCTYPE html>
 			<html>
 			<head>
-				<meta name="color-scheme" content="${isDarkMode ? 'dark' : 'light'}">
+				<meta name="color-scheme" content="${isDarkMode ? "dark" : "light"}">
 				<style>
 					* { box-sizing: border-box; }
 					body {
 						font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 						padding: 20px;
 						margin: 0;
-						background-color: ${isDarkMode ? '#1e1e1e' : '#ffffff'};
-						color: ${isDarkMode ? '#e0e0e0' : '#000000'};
+						background-color: ${isDarkMode ? "#1e1e1e" : "#ffffff"};
+						color: ${isDarkMode ? "#e0e0e0" : "#000000"};
 					}
 					h2 { margin: 0 0 10px 0; font-size: 18px; }
-					p { margin: 5px 0 15px 0; font-size: 14px; color: ${isDarkMode ? '#aaa' : '#666'}; }
+					p { margin: 5px 0 15px 0; font-size: 14px; color: ${isDarkMode ? "#aaa" : "#666"}; }
 					.account-list {
 						display: flex;
 						flex-direction: column;
@@ -715,24 +818,24 @@ class ApplicationTray {
 					.account-btn, .show-all-btn {
 						padding: 12px;
 						text-align: left;
-						background: ${isDarkMode ? '#2d2d2d' : '#f5f5f5'};
-						border: 1px solid ${isDarkMode ? '#444' : '#ddd'};
+						background: ${isDarkMode ? "#2d2d2d" : "#f5f5f5"};
+						border: 1px solid ${isDarkMode ? "#444" : "#ddd"};
 						border-radius: 4px;
 						cursor: pointer;
 						font-size: 14px;
 						transition: background 0.2s;
-						color: ${isDarkMode ? '#e0e0e0' : '#000000'};
+						color: ${isDarkMode ? "#e0e0e0" : "#000000"};
 					}
 					.account-btn:hover, .show-all-btn:hover {
-						background: ${isDarkMode ? '#3a3a3a' : '#e5e5e5'};
+						background: ${isDarkMode ? "#3a3a3a" : "#e5e5e5"};
 					}
 					.show-all-btn {
-						background: ${isDarkMode ? '#1a3a5c' : '#e8f4ff'};
+						background: ${isDarkMode ? "#1a3a5c" : "#e8f4ff"};
 						border-color: #0078d4;
 						font-weight: 500;
 					}
 					.show-all-btn:hover {
-						background: ${isDarkMode ? '#2a4a6c' : '#d0e8ff'};
+						background: ${isDarkMode ? "#2a4a6c" : "#d0e8ff"};
 					}
 				</style>
 			</head>
@@ -760,27 +863,39 @@ class ApplicationTray {
 				</script>
 			</body>
 			</html>
-		`));
+		`),
+		);
 
 		const handler = (_event, result) => {
-			if (result.action === 'show-all') {
+			if (result.action === "show-all") {
 				this.showAllWindows();
-			} else if (result.action === 'focus' && result.accountId) {
+			} else if (result.action === "focus" && result.accountId) {
 				this.focusAccount(result.accountId);
 			}
-			ipcMain.removeListener('tray-account-selection', handler);
+			ipcMain.removeListener("tray-account-selection", handler);
 		};
 
-		ipcMain.once('tray-account-selection', handler);
+		ipcMain.once("tray-account-selection", handler);
 
-		selectDialog.on('closed', () => {
-			ipcMain.removeListener('tray-account-selection', handler);
+		selectDialog.on("closed", () => {
+			ipcMain.removeListener("tray-account-selection", handler);
 		});
 
-		selectDialog.once('ready-to-show', () => {
+		selectDialog.once("ready-to-show", () => {
 			selectDialog.show();
 			selectDialog.focus();
 		});
+	}
+
+	/**
+	 * Open quick compose dialog
+	 */
+	openQuickCompose() {
+		if (this.quickCompose) {
+			// If in multi-account mode, pass the focused account
+			const accountId = this.accountManager?.focusedAccountId || null;
+			this.quickCompose.openDialog(accountId);
+		}
 	}
 
 	close() {

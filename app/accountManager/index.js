@@ -1,10 +1,9 @@
-const { BrowserWindow, app, ipcMain, powerMonitor } = require('electron');
-const path = require('path');
-const windowStateKeeper = require('electron-window-state');
-const { LucidLog } = require('lucid-log');
-const connectionManager = require('../connectionManager');
-const TrayIconChooser = require('../browser/tools/trayIconChooser');
-const TabManager = require('./tabManager');
+const { BrowserWindow, app, ipcMain, powerMonitor } = require("electron");
+const path = require("path");
+const windowStateKeeper = require("electron-window-state");
+const { LucidLog } = require("lucid-log");
+const TrayIconChooser = require("../browser/tools/trayIconChooser");
+const TabManager = require("./tabManager");
 
 /**
  * Manages multiple Outlook accounts with isolated sessions
@@ -37,7 +36,7 @@ class AccountManager {
 
 		/** @type {LucidLog} */
 		this.logger = new LucidLog({
-			levels: config.appLogLevels.split(',')
+			levels: config.appLogLevels.split(","),
 		});
 
 		/** @type {TrayIconChooser} */
@@ -82,7 +81,7 @@ class AccountManager {
 		}
 
 		// Listen for before-quit to allow windows to close properly
-		app.on('before-quit', () => {
+		app.on("before-quit", () => {
 			this.isQuitting = true;
 		});
 
@@ -101,7 +100,7 @@ class AccountManager {
 		this.globalHandlersRegistered = true;
 
 		const refreshAllWindows = () => {
-			this.accounts.forEach(account => {
+			this.accounts.forEach((account) => {
 				if (account.window && !account.window.isDestroyed()) {
 					this.refreshAccountWindow(account);
 				}
@@ -109,14 +108,14 @@ class AccountManager {
 		};
 
 		// Register global offline-retry handler
-		ipcMain.removeAllListeners('offline-retry');
-		ipcMain.on('offline-retry', refreshAllWindows);
+		ipcMain.removeAllListeners("offline-retry");
+		ipcMain.on("offline-retry", refreshAllWindows);
 
 		// Register global system resume handler
-		powerMonitor.removeAllListeners('resume');
-		powerMonitor.on('resume', refreshAllWindows);
+		powerMonitor.removeAllListeners("resume");
+		powerMonitor.on("resume", refreshAllWindows);
 
-		this.logger.info('Global handlers registered for connection management');
+		this.logger.info("Global handlers registered for connection management");
 	}
 
 	/**
@@ -126,7 +125,7 @@ class AccountManager {
 	refreshAccountWindow(account) {
 		// Skip in tabbed mode - tabs handle their own refreshing
 		if (this.tabbedMode) {
-			this.logger.info('Tabbed mode: skipping window refresh');
+			this.logger.info("Tabbed mode: skipping window refresh");
 			return;
 		}
 
@@ -135,12 +134,15 @@ class AccountManager {
 		}
 
 		const currentUrl = account.window.webContents.getURL();
-		const hasUrl = currentUrl && currentUrl.startsWith('https://') ? true : false;
+		const hasUrl =
+			currentUrl && currentUrl.startsWith("https://") ? true : false;
 
 		if (hasUrl) {
 			account.window.reload();
 		} else {
-			account.window.loadURL(this.config.url, { userAgent: this.config.chromeUserAgent });
+			account.window.loadURL(this.config.url, {
+				userAgent: this.config.chromeUserAgent,
+			});
 		}
 	}
 
@@ -148,12 +150,12 @@ class AccountManager {
 	 * Load accounts from persistent storage
 	 */
 	loadAccounts() {
-		const savedAccounts = this.appConfig.settingsStore.get('accounts', []);
-		this.accounts = savedAccounts.map(acc => ({
+		const savedAccounts = this.appConfig.settingsStore.get("accounts", []);
+		this.accounts = savedAccounts.map((acc) => ({
 			...acc,
 			window: null,
 			unreadCount: 0,
-			reminderCount: 0
+			reminderCount: 0,
 		}));
 		this.logger.info(`Loaded ${this.accounts.length} accounts from storage`);
 	}
@@ -162,15 +164,15 @@ class AccountManager {
 	 * Save accounts to persistent storage
 	 */
 	saveAccounts() {
-		const accountsToSave = this.accounts.map(acc => ({
+		const accountsToSave = this.accounts.map((acc) => ({
 			id: acc.id,
 			email: acc.email,
 			partition: acc.partition,
 			displayName: acc.displayName,
 			autoRestore: acc.autoRestore !== false, // default true
-			createdAt: acc.createdAt
+			createdAt: acc.createdAt,
 		}));
-		this.appConfig.settingsStore.set('accounts', accountsToSave);
+		this.appConfig.settingsStore.set("accounts", accountsToSave);
 		this.logger.debug(`Saved ${accountsToSave.length} accounts to storage`);
 	}
 
@@ -192,44 +194,41 @@ class AccountManager {
 	initializeTabbedMode() {
 		// Prevent double initialization
 		if (this.mainTabbedWindow && !this.mainTabbedWindow.isDestroyed()) {
-			this.logger.info('Tabbed mode already initialized, skipping');
+			this.logger.info("Tabbed mode already initialized, skipping");
 			return;
 		}
 
-		this.logger.info('Initializing tabbed mode');
+		this.logger.info("Initializing tabbed mode");
 
-		const { BrowserWindow, nativeTheme } = require('electron');
-		const path = require('path');
+		const { BrowserWindow, nativeTheme } = require("electron");
+		const path = require("path");
 
 		// Create main tabbed window
 		const mainWindow = new BrowserWindow({
 			width: 1400,
 			height: 900,
-			// Explicit WM_CLASS on X11 so desktop file matching is unambiguous
-			// (helps some panels/tray hosts avoid cross-app identity collisions).
-			// Should match StartupWMClass in the generated .desktop entry.
-			x11Class: 'outlook-for-linux',
-			backgroundColor: nativeTheme.shouldUseDarkColors ? '#302a75' : '#ffffff',
+			x11Class: "outlook-for-linux",
+			backgroundColor: nativeTheme.shouldUseDarkColors ? "#302a75" : "#ffffff",
 			show: false,
-			autoHideMenuBar: this.config.menubar === 'auto',
+			autoHideMenuBar: this.config.menubar === "auto",
 			icon: this.iconChooser.getFile(),
 			webPreferences: {
-				partition: 'persist:outlook-tabbed-ui',
+				partition: "persist:outlook-tabbed-ui",
 				nodeIntegration: true,
 				contextIsolation: false,
 				sandbox: false,
-				preload: path.join(__dirname, 'tabbar-preload.js'),
-			}
+				preload: path.join(__dirname, "tabbar-preload.js"),
+			},
 		});
 
 		// Store reference
 		this.mainTabbedWindow = mainWindow;
 
 		// Handle window state BEFORE creating TabManager
-		const windowStateKeeper = require('electron-window-state');
+		const windowStateKeeper = require("electron-window-state");
 		const mainWindowState = windowStateKeeper({
 			defaultWidth: 1200,
-			defaultHeight: 800
+			defaultHeight: 800,
 		});
 
 		// Update window bounds from saved state
@@ -237,7 +236,7 @@ class AccountManager {
 			width: mainWindowState.width,
 			height: mainWindowState.height,
 			x: mainWindowState.x,
-			y: mainWindowState.y
+			y: mainWindowState.y,
 		});
 
 		// Create TabManager
@@ -247,33 +246,34 @@ class AccountManager {
 		mainWindowState.manage(mainWindow);
 
 		// Prevent eval
-		mainWindow.eval = global.eval = function () { // eslint-disable-line no-eval
-			throw new Error('Sorry, this app does not support window.eval().');
+		mainWindow.eval = global.eval = function () {
+			// eslint-disable-line no-eval
+			throw new Error("Sorry, this app does not support window.eval().");
 		};
 
 		// Load tab bar UI into main window
-		const tabBarPath = path.join(__dirname, 'tabbar.html');
+		const tabBarPath = path.join(__dirname, "tabbar.html");
 		mainWindow.loadFile(tabBarPath);
 
 		// Mark tab bar as injected when loaded
-		mainWindow.webContents.on('did-finish-load', () => {
+		mainWindow.webContents.on("did-finish-load", () => {
 			if (!this.tabManager.tabBarInjected) {
 				this.tabManager.tabBarInjected = true;
-				this.logger.info('Tab bar loaded and injected');
+				this.logger.info("Tab bar loaded and injected");
 				// Update tab UI with initial state (empty initially)
 				this.tabManager.updateTabUI();
 			}
 		});
 
 		// Show when ready
-		mainWindow.once('ready-to-show', () => {
+		mainWindow.once("ready-to-show", () => {
 			this.mainWindowReady = true;
-			this.logger.info('Main tabbed window ready-to-show fired');
+			this.logger.info("Main tabbed window ready-to-show fired");
 			mainWindow.show();
 		});
 
 		// Handle window close button - respect closeAppOnCross setting and allow quit
-		mainWindow.on('close', (event) => {
+		mainWindow.on("close", (event) => {
 			if (!this.config.closeAppOnCross && !this.isQuitting) {
 				event.preventDefault();
 				mainWindow.hide();
@@ -282,7 +282,7 @@ class AccountManager {
 
 		// Handle DPI scale changes when moving between monitors
 		// 'moved' fires only after drag completes, not continuously during drag
-		mainWindow.on('moved', () => {
+		mainWindow.on("moved", () => {
 			if (this.tabManager) {
 				this.tabManager.updateTabBounds();
 			}
@@ -290,7 +290,7 @@ class AccountManager {
 
 		// Debounced resize handler (resize fires continuously during drag)
 		let resizeTimeout;
-		mainWindow.on('resize', () => {
+		mainWindow.on("resize", () => {
 			if (this.tabManager) {
 				clearTimeout(resizeTimeout);
 				resizeTimeout = setTimeout(() => {
@@ -300,15 +300,15 @@ class AccountManager {
 		});
 
 		// Handle window closed
-		mainWindow.on('closed', () => {
-			this.logger.info('Main tabbed window closed');
+		mainWindow.on("closed", () => {
+			this.logger.info("Main tabbed window closed");
 			this.mainTabbedWindow = null;
 			if (this.tabManager) {
 				this.tabManager.destroy();
 			}
 		});
 
-		this.logger.info('Tabbed mode initialized');
+		this.logger.info("Tabbed mode initialized");
 	}
 
 	/**
@@ -321,7 +321,9 @@ class AccountManager {
 	createAccount(options = {}) {
 		// If in tabbed mode, use tab manager instead
 		if (this.tabbedMode && this.tabManager) {
-			this.logger.info(`Creating tab for account: ${options.displayName || 'New Account'}`);
+			this.logger.info(
+				`Creating tab for account: ${options.displayName || "New Account"}`,
+			);
 			const id = this.generateAccountId();
 			const partition = `persist:${id}`;
 
@@ -330,12 +332,13 @@ class AccountManager {
 				id,
 				partition,
 				email: options.email || null,
-				displayName: options.displayName || `Account ${this.accounts.length + 1}`,
+				displayName:
+					options.displayName || `Account ${this.accounts.length + 1}`,
 				autoRestore: true,
 				createdAt: Date.now(),
-				window: null,  // No window in tabbed mode
+				window: null, // No window in tabbed mode
 				unreadCount: 0,
-				reminderCount: 0
+				reminderCount: 0,
 			};
 
 			this.accounts.push(account);
@@ -361,7 +364,7 @@ class AccountManager {
 			createdAt: Date.now(),
 			window: null,
 			unreadCount: 0,
-			reminderCount: 0
+			reminderCount: 0,
 		};
 
 		this.accounts.push(account);
@@ -394,7 +397,7 @@ class AccountManager {
 				id: account.id,
 				displayName: account.displayName,
 				email: account.email,
-				partition: account.partition
+				partition: account.partition,
 			});
 			return;
 		}
@@ -410,33 +413,33 @@ class AccountManager {
 		const windowState = windowStateKeeper({
 			defaultWidth: 1280,
 			defaultHeight: 800,
-			file: `window-state-${account.id}`
+			file: `window-state-${account.id}`,
 		});
 
 		const window = new BrowserWindow({
 			title: `Microsoft Outlook - ${account.displayName}`,
-			x11Class: 'outlook-for-linux',
+			x11Class: "outlook-for-linux",
 			x: windowState.x,
 			y: windowState.y,
 			width: windowState.width,
 			height: windowState.height,
-			backgroundColor: '#302a75',
+			backgroundColor: "#302a75",
 			show: false,
-			autoHideMenuBar: this.config.menubar == 'auto',
+			autoHideMenuBar: this.config.menubar == "auto",
 			icon: this.iconChooser.getFile(),
 			webPreferences: {
 				partition: account.partition,
-				preload: path.join(__dirname, '..', 'browser', 'index.js'),
+				preload: path.join(__dirname, "..", "browser", "index.js"),
 				plugins: true,
 				contextIsolation: false,
 				sandbox: false,
 				spellcheck: false,
-				additionalArguments: [`--accountId=${account.id}`]
-			}
+				additionalArguments: [`--accountId=${account.id}`],
+			},
 		});
 
 		// Enable @electron/remote for this window
-		require('@electron/remote/main').enable(window.webContents);
+		require("@electron/remote/main").enable(window.webContents);
 
 		// Store reference
 		account.window = window;
@@ -445,8 +448,9 @@ class AccountManager {
 		windowState.manage(window);
 
 		// Prevent eval
-		window.eval = global.eval = function () { // eslint-disable-line no-eval
-			throw new Error('Sorry, this app does not support window.eval().');
+		window.eval = global.eval = function () {
+			// eslint-disable-line no-eval
+			throw new Error("Sorry, this app does not support window.eval().");
 		};
 
 		// Show when ready, or after a timeout fallback
@@ -459,7 +463,7 @@ class AccountManager {
 			}
 		};
 
-		window.once('ready-to-show', showWindow);
+		window.once("ready-to-show", showWindow);
 
 		// Fallback: show window after 5 seconds even if not ready
 		setTimeout(() => {
@@ -468,14 +472,18 @@ class AccountManager {
 
 		// Handle window close - prevent closing and hide instead (minimize to tray)
 		// But allow closing if app is quitting
-		window.on('close', (event) => {
+		window.on("close", (event) => {
 			if (this.isQuitting) {
 				// Allow the window to close when app is quitting
-				this.logger.info(`Account window closing (app quitting): ${account.displayName}`);
+				this.logger.info(
+					`Account window closing (app quitting): ${account.displayName}`,
+				);
 				return;
 			}
 
-			this.logger.info(`Account window close requested: ${account.displayName}`);
+			this.logger.info(
+				`Account window close requested: ${account.displayName}`,
+			);
 			// Prevent the window from closing, just hide it
 			event.preventDefault();
 			window.hide();
@@ -483,100 +491,105 @@ class AccountManager {
 		});
 
 		// Handle window closed
-		window.on('closed', () => {
+		window.on("closed", () => {
 			account.window = null;
 			this.logger.info(`Account window closed: ${account.displayName}`);
 		});
 
 		// Handle window focus for badge rotation
-		window.on('focus', () => {
+		window.on("focus", () => {
 			this.focusedAccountId = account.id;
 		});
-
-		// ------------------------------------------------------------
-		// Hovered link URL forwarding (no settings)
-		// ------------------------------------------------------------
-		window.webContents.on('update-target-url', (_event, url) => {
-		    window.webContents.send('hover-link-url', {
-		        url: url || ''
-		    });
+		// Forward hovered link URLs to the renderer for the link preview tooltip
+		window.webContents.on("update-target-url", (_event, url) => {
+			window.webContents.send("hover-link-url", { url: url || "" });
 		});
 
 		// Add context menu (right-click)
-		window.webContents.on('context-menu', (event, params) => {
-			const { Menu, MenuItem, clipboard, shell } = require('electron');
+		window.webContents.on("context-menu", (_event, params) => {
+			const { Menu, MenuItem, clipboard, shell } = require("electron");
 			const menu = new Menu();
 
-            // --- Link-specific context menu ---
-            if (params.linkURL) {
-                menu.append(new MenuItem({
-                    label: 'Open Link in Browser',
-                    click: () => {
-                        shell.openExternal(params.linkURL);
-                    }
-                }));
-
-                menu.append(new MenuItem({
-                    label: 'Copy Link',
-                    click: () => {
-                        clipboard.writeText(params.linkURL);
-                    }
-                }));
-
-                menu.append(new MenuItem({ type: 'separator' }));
-            }
+			// Link-specific options
+			if (params.linkURL) {
+				menu.append(
+					new MenuItem({
+						label: "Open Link in Browser",
+						click: () => shell.openExternal(params.linkURL),
+					}),
+				);
+				menu.append(
+					new MenuItem({
+						label: "Copy Link",
+						click: () => clipboard.writeText(params.linkURL),
+					}),
+				);
+				menu.append(new MenuItem({ type: "separator" }));
+			}
 
 			// Add "Reload Page" option
-			menu.append(new MenuItem({
-				label: 'Reload Page',
-				accelerator: 'Ctrl+R',
-				click: () => {
-					window.reload();
-				}
-			}));
+			menu.append(
+				new MenuItem({
+					label: "Reload Page",
+					accelerator: "Ctrl+R",
+					click: () => {
+						window.reload();
+					},
+				}),
+			);
 
 			// Add "Go to Home" option
-			menu.append(new MenuItem({
-				label: 'Go to Home',
-				accelerator: 'Ctrl+Home',
-				click: () => {
-					window.loadURL(this.config.url, { userAgent: this.config.chromeUserAgent });
-				}
-			}));
+			menu.append(
+				new MenuItem({
+					label: "Go to Home",
+					accelerator: "Ctrl+Home",
+					click: () => {
+						window.loadURL(this.config.url, {
+							userAgent: this.config.chromeUserAgent,
+						});
+					},
+				}),
+			);
 
-			menu.append(new MenuItem({ type: 'separator' }));
+			menu.append(new MenuItem({ type: "separator" }));
 
 			// Standard context menu items (if text is selected or in an input field)
 			if (params.isEditable || params.selectionText) {
 				if (params.misspelledWord) {
-					menu.append(new MenuItem({
-						label: 'Add to Dictionary',
-						click: () => {
-							window.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord);
-						}
-					}));
-					menu.append(new MenuItem({ type: 'separator' }));
+					menu.append(
+						new MenuItem({
+							label: "Add to Dictionary",
+							click: () => {
+								window.webContents.session.addWordToSpellCheckerDictionary(
+									params.misspelledWord,
+								);
+							},
+						}),
+					);
+					menu.append(new MenuItem({ type: "separator" }));
 				}
 
 				if (params.isEditable) {
-					menu.append(new MenuItem({ label: 'Cut', role: 'cut' }));
-					menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
-					menu.append(new MenuItem({ label: 'Paste', role: 'paste' }));
+					menu.append(new MenuItem({ label: "Cut", role: "cut" }));
+					menu.append(new MenuItem({ label: "Copy", role: "copy" }));
+					menu.append(new MenuItem({ label: "Paste", role: "paste" }));
 				} else if (params.selectionText) {
-					menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+					menu.append(new MenuItem({ label: "Copy", role: "copy" }));
 				}
 
-				menu.append(new MenuItem({ type: 'separator' }));
+				menu.append(new MenuItem({ type: "separator" }));
 			}
 
 			// Add "Inspect Element" for debugging
 			if (this.config.webDebug) {
-				menu.append(new MenuItem({
-					label: 'Inspect Element',
-					click: () => {
-						window.webContents.inspectElement(params.x, params.y);
-					}
-				}));
+				menu.append(
+					new MenuItem({
+						label: "Inspect Element",
+						click: () => {
+							window.webContents.inspectElement(params.x, params.y);
+						},
+					}),
+				);
 			}
 
 			menu.popup({ window });
@@ -585,7 +598,9 @@ class AccountManager {
 		// Load the Outlook URL for this account window
 		window.loadURL(this.config.url, { userAgent: this.config.chromeUserAgent });
 
-		this.logger.info(`Created account window: ${account.displayName} (partition: ${account.partition})`);
+		this.logger.info(
+			`Created account window: ${account.displayName} (partition: ${account.partition})`,
+		);
 	}
 
 	/**
@@ -593,7 +608,7 @@ class AccountManager {
 	 * @param {string} accountId
 	 */
 	removeAccount(accountId) {
-		const index = this.accounts.findIndex(a => a.id === accountId);
+		const index = this.accounts.findIndex((a) => a.id === accountId);
 		if (index === -1) {
 			this.logger.warn(`Account not found: ${accountId}`);
 			return;
@@ -620,7 +635,7 @@ class AccountManager {
 
 		// If no accounts left, create a new one
 		if (this.accounts.length === 0) {
-			this.logger.info('No accounts remaining, creating default account');
+			this.logger.info("No accounts remaining, creating default account");
 			this.createAccount();
 		}
 	}
@@ -631,7 +646,7 @@ class AccountManager {
 	 * @returns {Account|null}
 	 */
 	getAccount(accountId) {
-		return this.accounts.find(a => a.id === accountId) || null;
+		return this.accounts.find((a) => a.id === accountId) || null;
 	}
 
 	/**
@@ -640,7 +655,7 @@ class AccountManager {
 	 * @returns {Account|null}
 	 */
 	getAccountByWindow(window) {
-		return this.accounts.find(a => a.window === window) || null;
+		return this.accounts.find((a) => a.window === window) || null;
 	}
 
 	/**
@@ -655,16 +670,20 @@ class AccountManager {
 	 * Restore accounts (open windows for accounts with autoRestore enabled)
 	 */
 	async restoreAccounts() {
-		const accountsToRestore = this.accounts.filter(a => a.autoRestore !== false);
+		const accountsToRestore = this.accounts.filter(
+			(a) => a.autoRestore !== false,
+		);
 
 		if (accountsToRestore.length === 0 && this.accounts.length === 0) {
 			// No accounts exist, create first one
-			this.logger.info('No accounts found, creating default account');
+			this.logger.info("No accounts found, creating default account");
 			// In tabbed mode, wait for main window to be ready before creating first account
 			if (this.tabbedMode && this.mainTabbedWindow) {
-				this.logger.info('Tabbed mode: waiting for main window ready-to-show before creating first account');
-				this.mainTabbedWindow.once('ready-to-show', () => {
-					this.logger.info('Main window ready, creating first account');
+				this.logger.info(
+					"Tabbed mode: waiting for main window ready-to-show before creating first account",
+				);
+				this.mainTabbedWindow.once("ready-to-show", () => {
+					this.logger.info("Main window ready, creating first account");
 					this.createAccount();
 				});
 				// Show the window to trigger ready-to-show
@@ -679,9 +698,11 @@ class AccountManager {
 
 		// TIMING TEST: In tabbed mode, wait for main window to be ready before restoring tabs
 		if (this.tabbedMode && !this.mainWindowReady) {
-			this.logger.info('Tabbed mode: waiting for main window ready-to-show before restoring accounts');
-			this.mainTabbedWindow.once('ready-to-show', () => {
-				this.logger.info('Main window ready, now restoring accounts');
+			this.logger.info(
+				"Tabbed mode: waiting for main window ready-to-show before restoring accounts",
+			);
+			this.mainTabbedWindow.once("ready-to-show", () => {
+				this.logger.info("Main window ready, now restoring accounts");
 				for (const account of accountsToRestore) {
 					this.createAccountWindow(account);
 				}
@@ -706,7 +727,9 @@ class AccountManager {
 		if (account && account.email !== email) {
 			account.email = email;
 			this.saveAccounts();
-			this.logger.info(`Updated account email: ${account.displayName} -> ${email}`);
+			this.logger.info(
+				`Updated account email: ${account.displayName} -> ${email}`,
+			);
 			this.updateTrayMenu();
 		}
 	}
@@ -720,10 +743,11 @@ class AccountManager {
 		const account = this.getAccount(accountId);
 		if (account) {
 			// If displayName is empty or whitespace, clear manual override to allow detection
-			if (displayName.trim() === '') {
+			if (displayName.trim() === "") {
 				account.manualDisplayName = null;
 				// Revert to detected email or default
-				account.displayName = account.email || `Account ${this.accounts.indexOf(account) + 1}`;
+				account.displayName =
+					account.email || `Account ${this.accounts.indexOf(account) + 1}`;
 			} else {
 				// Set manual override - detection won't override this
 				account.manualDisplayName = displayName;
@@ -754,7 +778,9 @@ class AccountManager {
 		if (account) {
 			account.autoRestore = !account.autoRestore;
 			this.saveAccounts();
-			this.logger.info(`Auto-restore ${account.autoRestore ? 'enabled' : 'disabled'} for: ${account.displayName}`);
+			this.logger.info(
+				`Auto-restore ${account.autoRestore ? "enabled" : "disabled"} for: ${account.displayName}`,
+			);
 			this.updateTrayMenu();
 		}
 	}
@@ -792,7 +818,11 @@ class AccountManager {
 	 */
 	showAllWindows() {
 		// In tabbed mode, just show main tabbed window
-		if (this.tabbedMode && this.mainTabbedWindow && !this.mainTabbedWindow.isDestroyed()) {
+		if (
+			this.tabbedMode &&
+			this.mainTabbedWindow &&
+			!this.mainTabbedWindow.isDestroyed()
+		) {
 			if (this.mainTabbedWindow.isMinimized()) {
 				this.mainTabbedWindow.restore();
 			}
@@ -864,23 +894,27 @@ class AccountManager {
 	 */
 	updateBadge() {
 		// Find accounts with unread items
-		const accountsWithUnread = this.accounts.filter(a => a.unreadCount > 0 || a.reminderCount > 0);
+		const accountsWithUnread = this.accounts.filter(
+			(a) => a.unreadCount > 0 || a.reminderCount > 0,
+		);
 
 		if (accountsWithUnread.length === 0) {
 			app.setBadgeCount(0);
 			if (this.menus && this.menus.tray) {
-				this.menus.tray.updateBadge(0, 'email');
+				this.menus.tray.updateBadge(0, "email");
 			}
 			return;
 		}
 
 		// Rotate to next account
-		this.currentBadgeIndex = (this.currentBadgeIndex + 1) % accountsWithUnread.length;
+		this.currentBadgeIndex =
+			(this.currentBadgeIndex + 1) % accountsWithUnread.length;
 		const account = accountsWithUnread[this.currentBadgeIndex];
 
 		// Show reminder count if available, otherwise email count
-		const count = account.reminderCount > 0 ? account.reminderCount : account.unreadCount;
-		const type = account.reminderCount > 0 ? 'reminder' : 'email';
+		const count =
+			account.reminderCount > 0 ? account.reminderCount : account.unreadCount;
+		const type = account.reminderCount > 0 ? "reminder" : "email";
 
 		app.setBadgeCount(count);
 		if (this.menus && this.menus.tray) {
