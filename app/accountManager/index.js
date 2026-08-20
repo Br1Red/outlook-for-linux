@@ -27,7 +27,6 @@ class AccountManager {
 
 		/** @type {Object} */
 		this.appConfig = appConfig;
-		this.intune = config.auth?.intune?.enabled ? require("../intune") : null;
 
 		/** @type {Array<Account>} */
 		this.accounts = [];
@@ -88,12 +87,6 @@ class AccountManager {
 
 		// Register global handlers once (shared by all windows)
 		this.registerGlobalHandlers();
-	}
-
-	attachIntuneSession(browserSession) {
-		if (this.intune) {
-			this.intune.attachToSession(browserSession);
-		}
 	}
 
 	/**
@@ -447,7 +440,6 @@ class AccountManager {
 
 		// Enable @electron/remote for this window
 		require("@electron/remote/main").enable(window.webContents);
-		this.attachIntuneSession(window.webContents.session);
 
 		// Store reference
 		account.window = window;
