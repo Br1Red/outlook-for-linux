@@ -7,12 +7,42 @@ const BROKER_PATH = '/com/microsoft/identity/broker1';
 const BROKER_INTERFACE = 'com.microsoft.identity.Broker1';
 const PROTOCOL_VERSION = '0.0';
 const CLIENT_ID = '88200948-af09-45a1-9c03-53cdcc75c183';
+const BROKER_TIMEOUT_MS = 10_000;
 
-const sessionBus = dbus.sessionBus();
+let sessionBus = null;
+
+function disableSso(error) {
+	intuneAccount = null;
+	sessionBus = null;
+	console.warn('[INTUNE] Identity Broker unavailable', error.message || error);
+}
+
+function getSessionBus() {
+	if (sessionBus) {
+		return sessionBus;
+	}
+
+	sessionBus = dbus.sessionBus();
+	sessionBus.on('error', disableSso);
+	return sessionBus;
+}
 
 function invokeBrokerMethod(methodName, request, correlationId = '') {
 	return new Promise((resolve, reject) => {
-		sessionBus.invoke(
+		const timeout = setTimeout(
+			() => reject(new Error(`Identity Broker ${methodName} request timed out`)),
+			BROKER_TIMEOUT_MS,
+		);
+		const complete = (err, result) => {
+			clearTimeout(timeout);
+			if (err) {
+				reject(err);
+			} else {
+				resolve(result);
+			}
+		};
+
+		getSessionBus().invoke(
 			{
 				destination: BROKER_SERVICE,
 				path: BROKER_PATH,
@@ -25,7 +55,7 @@ function invokeBrokerMethod(methodName, request, correlationId = '') {
 					JSON.stringify(request),
 				],
 			},
-			(err, result) => (err ? reject(err) : resolve(result)),
+			complete,
 		);
 	});
 }
@@ -73,7 +103,7 @@ exports.initSso = async function initSso(requestedUser = '') {
 			console.warn('[INTUNE] No matching Identity Broker account found');
 		}
 	} catch (error) {
-		console.warn('[INTUNE] Identity Broker unavailable', error.message || error);
+		disableSso(error);
 	}
 };
 
@@ -131,7 +161,7 @@ exports.addSsoCookie = async function addSsoCookie(detail, callback) {
 			detail.requestHeaders['X-Ms-Refreshtokencredential'] = cookieContent;
 		}
 	} catch (error) {
-		console.warn('[INTUNE] Failed to acquire SSO cookie', error.message || error);
+		disableSso(error);
 	}
 
 	callback({ requestHeaders: detail.requestHeaders });
