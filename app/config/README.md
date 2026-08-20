@@ -14,6 +14,8 @@ Here is the list of available arguments and its usage:
 | appIconType | Type of tray icon to be used default/light/dark | default |
 | appLogLevels | Comma separated list of log levels (error,warn,info,debug) | error,warn |
 | appTitle |  A text to be suffixed with page title | Microsoft Outlook |
+| auth.intune.enabled | Enable SSO through the Microsoft Identity Broker | false |
+| auth.intune.user | Optional e-mail address of the Intune account to use | |
 | chromeUserAgent | user agent string for chrome | Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3831.6 Safari/537.36 |
 | customCACertsFingerprints | custom CA Certs Fingerprints to allow SSL unrecognized signer or self signed certificate (see below) | [] |
 | customUserDir | Custom User Directory so that you can have multiple profiles | |

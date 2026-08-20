@@ -25,6 +25,12 @@ const appConfig = new AppConfiguration(app.getPath("userData"));
 const config = appConfig.startupConfig;
 config.appPath = path.join(__dirname, isDev ? "" : "../../");
 
+const intuneEnabled = config.auth?.intune?.enabled;
+if (config.tabbedMode && intuneEnabled) {
+	config.tabbedMode = false;
+	console.warn("Intune SSO is not supported with tabbed mode; disabling tabbed mode");
+}
+
 const logger = new LucidLog({
 	levels: config.appLogLevels.split(","),
 });

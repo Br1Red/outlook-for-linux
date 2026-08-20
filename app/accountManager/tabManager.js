@@ -63,6 +63,7 @@ class TabManager {
 		// GLM-5 FIX 1: Pre-initialize session partition BEFORE creating BrowserView
 		const ses = session.fromPartition(account.partition);
 		ses.setUserAgent(this.config.chromeUserAgent);
+		this.accountManager.attachIntuneSession(ses);
 		console.log(`[TabManager] Session pre-initialized: ${account.partition}`);
 
 		// Create BrowserView for this tab with its own webContents
