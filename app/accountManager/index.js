@@ -508,7 +508,6 @@ class AccountManager {
 		window.on("focus", () => {
 			this.focusedAccountId = account.id;
 		});
-
 		// Forward hovered link URLs to the renderer for the link preview tooltip
 		window.webContents.on("update-target-url", (_event, url) => {
 			window.webContents.send("hover-link-url", { url: url || "" });

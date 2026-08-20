@@ -59,6 +59,7 @@
   "build": {
     "appId": "outlook-for-linux",
     "productName": "outlook-for-linux",
+    "icon": "app/assets/icons",
     "extraMetadata": {
       "version": "1.4.0"
     },
@@ -83,11 +84,11 @@
       "description": "Unofficial Microsoft Outlook client for Linux using Electron. It uses the Web App and wraps it as a standalone application using Electron.",
       "desktop": {
         "entry": {
-          "Name": "Microsoft Outlook",
+          "Name": "outlook-for-linux",
+          "Type": "Application",
           "Comment": "Unofficial Microsoft Outlook client for Linux",
           "StartupWMClass": "outlook-for-linux",
           "Icon": "outlook-for-linux",
-          "Type": "Application",
           "MimeType": "x-scheme-handler/mailto;x-scheme-handler/msoutlook;"
         }
       },
