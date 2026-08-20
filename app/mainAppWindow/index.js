@@ -31,7 +31,6 @@ let config;
  * @type {AccountManager}
  */
 let accountManager;
-let intune;
 
 /**
  * @param {AppConfiguration} mainConfig
@@ -41,10 +40,6 @@ exports.onAppReady = async function onAppReady(mainConfig) {
 	const mainApp = require("../index");
 
 	config = mainConfig.startupConfig;
-	if (config.auth?.intune?.enabled) {
-		intune = require("../intune");
-		await intune.initSso(config.auth.intune.user || "");
-	}
 	iconChooser = new TrayIconChooser(mainConfig.startupConfig);
 	logger = new LucidLog({
 		levels: config.appLogLevels.split(","),
