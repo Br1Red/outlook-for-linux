@@ -605,6 +605,7 @@ class ApplicationTray {
 		dialog.showMessageBoxSync(targetWindow || null, {
 			buttons: ["OK"],
 			title: "About",
+			icon: this.iconPath,
 			defaultId: 0,
 			cancelId: 0,
 			message: appInfo.join("\n"),
