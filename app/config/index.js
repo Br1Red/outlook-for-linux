@@ -64,6 +64,16 @@ function argv(configPath) {
 				describe: 'A text to be suffixed with page title',
 				type: 'string'
 			},
+			auth: {
+				default: {
+					intune: {
+						enabled: false,
+						user: ''
+					}
+				},
+				describe: 'Authentication configuration, including Microsoft Intune SSO',
+				type: 'object'
+			},
 			chromeUserAgent: {
 				default: `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`,
 				describe: 'Google Chrome User Agent',
