@@ -23,7 +23,17 @@ function getSessionBus() {
 	}
 
 	sessionBus = dbus.sessionBus();
-	sessionBus.on('error', disableSso);
+	if (!sessionBus || typeof sessionBus.invoke !== 'function') {
+		throw new Error('Failed to create a valid D-Bus session bus');
+	}
+
+	if (typeof sessionBus.on === 'function') {
+		sessionBus.on('error', disableSso);
+	} else if (typeof sessionBus.addListener === 'function') {
+		sessionBus.addListener('error', disableSso);
+	} else if (sessionBus.connection && typeof sessionBus.connection.on === 'function') {
+		sessionBus.connection.on('error', disableSso);
+	}
 	return sessionBus;
 }
 
