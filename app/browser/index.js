@@ -187,17 +187,6 @@ console.log("[Preload] Script starting...");
 	}
 })();
 
-// ------------------------------------------------------------
-// Link preview (hover tooltip / status bar)
-// ------------------------------------------------------------
-contextBridge.exposeInMainWorld('linkPreview', {
-    onHover: (callback) => {
-        ipcRenderer.on('hover-link-url', (_, payload) => {
-            callback(payload);
-        });
-    },
-});
-
 /**
  * Initialize MutationObserver to intercept Outlook notification elements
  * @param {Electron.IpcRenderer} ipcRenderer
