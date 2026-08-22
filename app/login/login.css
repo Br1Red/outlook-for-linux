@@ -1,0 +1,25 @@
+body {
+    margin: 0;
+    padding: 20px;
+    font-family: sans-serif;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+input[type="email"],
+input[type="password"] {
+    width: 342px;
+}
+
+input[type="submit"] {
+    align-self: flex-start;
+    background-color: rgb(38, 114, 236);
+    border: none;
+    min-width: 80px;
+    padding: 4px 20px 6px;
+    color: white;
+}

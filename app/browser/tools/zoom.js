@@ -1,8 +1,5 @@
 const { webFrame, ipcRenderer } = require('electron');
-const { LucidLog } = require('lucid-log');
-const logger = new LucidLog({
-	levels: ['debug']
-});
+const logger = console;
 
 const zoomLevels = {
 	'+': 0.25,
@@ -24,7 +21,7 @@ class Zoom {
 		_Zoom_config.set(this, config);
 		_Zoom_initialized.set(this, true);
 		this.restoreZoomLevel();
-		require('@electron/remote').getCurrentWindow().webContents.on('zoom-changed', setZoomChangedHandler(config));
+		ipcRenderer.on('zoom-changed', setZoomChangedHandler(config));
 	}
 
 	get config() {

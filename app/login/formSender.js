@@ -1,10 +1,10 @@
-const {ipcRenderer} = require('electron');
 
-function sendForm(event) { // eslint-disable-line no-unused-vars
+function sendForm(event) {
 	event.preventDefault();
-	ipcRenderer.send('submitForm',
-		{
-			username: document.getElementById('username').value,
-			password: document.getElementById('password').value,
-		});
+	window.outlookLogin.submit({
+		username: document.getElementById('username').value,
+		password: document.getElementById('password').value,
+	});
 }
+
+document.getElementById('login-form').addEventListener('submit', sendForm);

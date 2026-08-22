@@ -1,0 +1,67 @@
+* { box-sizing: border-box; }
+
+:root {
+	color-scheme: light;
+	--background: #ffffff;
+	--surface: #f5f5f5;
+	--border: #dddddd;
+	--text: #000000;
+	--muted: #666666;
+}
+
+:root[data-theme="dark"] {
+	color-scheme: dark;
+	--background: #1e1e1e;
+	--surface: #2d2d2d;
+	--border: #444444;
+	--text: #e0e0e0;
+	--muted: #aaaaaa;
+}
+
+body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	padding: 20px;
+	margin: 0;
+	background: var(--background);
+	color: var(--text);
+}
+
+h2 { margin: 0 0 10px; font-size: 18px; }
+p { margin: 5px 0 15px; font-size: 14px; }
+.current-name { margin-bottom: 8px; }
+.info-text { color: var(--muted); font-size: 12px; }
+
+.dialog-content { display: flex; flex-direction: column; gap: 10px; }
+.account-list { display: flex; flex-direction: column; gap: 8px; max-height: 350px; overflow-y: auto; }
+.startup-list { max-height: 300px; }
+.account-button, .account-item {
+	padding: 12px;
+	text-align: left;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	color: var(--text);
+	font-size: 14px;
+}
+.account-button { cursor: pointer; }
+.account-button:hover { background: color-mix(in srgb, var(--surface) 80%, #0078d4); }
+.account-button.show-all { border-color: #0078d4; font-weight: 500; }
+.account-item { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.account-item input { width: 18px; height: 18px; }
+.account-item span { flex: 1; }
+
+input[type="text"] {
+	width: 100%;
+	padding: 8px;
+	font-size: 14px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	color: var(--text);
+}
+input[type="text"]:focus { outline: 2px solid #0078d4; border-color: #0078d4; }
+
+.buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 5px; }
+button { padding: 9px 16px; font-size: 14px; cursor: pointer; border-radius: 4px; }
+#cancel { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+#confirm { background: #0078d4; border: none; color: white; }
+#confirm:hover { background: #106ebe; }

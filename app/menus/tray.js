@@ -319,158 +319,61 @@ class ApplicationTray {
 		}
 	}
 
-	/**
-	 * Rename an account
-	 * @param {Object} account
-	 */
 	renameAccount(account) {
-		if (this.accountManager) {
-			const { BrowserWindow } = require("electron");
+		if (!this.accountManager) return;
 
-			// In tabbed mode, use main tabbed window as parent
-			const parentWindow =
-				this.accountManager.mainTabbedWindow || account.window || null;
+		const { BrowserWindow, ipcMain } = require('electron');
+		const parentWindow =
+			this.accountManager.mainTabbedWindow || account.window || null;
+		const isDarkMode = nativeTheme.shouldUseDarkColors;
+		const inputDialog = new BrowserWindow({
+			width: 450,
+			height: account.manualDisplayName ? 260 : 240,
+			resizable: false,
+			modal: parentWindow !== null,
+			parent: parentWindow,
+			show: false,
+			autoHideMenuBar: true,
+			webPreferences: {
+				preload: path.join(__dirname, '..', 'dialogs', 'preload.js'),
+				nodeIntegration: false,
+				contextIsolation: true,
+				sandbox: true,
+				additionalArguments: [
+					'--dialog-type=rename',
+					`--dialog-data=${encodeURIComponent(JSON.stringify({
+						isDarkMode,
+						currentName: account.displayName,
+						inputValue: account.manualDisplayName || '',
+						hasManualName: Boolean(account.manualDisplayName),
+						email: account.email || '',
+						placeholder: account.manualDisplayName
+							? 'Leave empty to revert to auto-detection'
+							: 'Enter new name or leave empty for auto-detection',
+					}))}`,
+				],
+			},
+		});
 
-			// Create a simple input dialog
-			const inputDialog = new BrowserWindow({
-				width: 450,
-				height: account.manualDisplayName ? 260 : 240,
-				resizable: false,
-				modal: parentWindow !== null, // Only modal if we have a parent
-				parent: parentWindow,
-				show: false,
-				autoHideMenuBar: true,
-				webPreferences: {
-					nodeIntegration: true,
-					contextIsolation: false,
-				},
-			});
+		inputDialog.loadFile(path.join(__dirname, '..', 'dialogs', 'dialog.html'));
 
-			// Prepare values for template
-			const currentName = account.displayName;
-			const inputValue = account.manualDisplayName || "";
-			const placeholder = account.manualDisplayName
-				? "Leave empty to revert to auto-detection"
-				: "Enter new name or leave empty for auto-detection";
-			const revertText = account.manualDisplayName
-				? `<p class="info-text">Leave empty to revert to auto-detection (${account.email || "detected email"})</p>`
-				: "";
+		const handler = (event, newName) => {
+			if (event.sender !== inputDialog.webContents || typeof newName !== 'string') {
+				return;
+			}
+			this.accountManager.setAccountDisplayName(account.id, newName);
+			inputDialog.close();
+			ipcMain.removeListener('rename-account-result', handler);
+		};
 
-			// Get dark mode preference
-			const isDarkMode = nativeTheme.shouldUseDarkColors;
-
-			// Load a simple HTML page with an input form
-			inputDialog.loadURL(
-				"data:text/html;charset=utf-8," +
-					encodeURIComponent(`
-				<!DOCTYPE html>
-				<html>
-				<head>
-					<meta name="color-scheme" content="${isDarkMode ? "dark" : "light"}">
-					<style>
-						* { box-sizing: border-box; }
-						body {
-							font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-							padding: 20px;
-							margin: 0;
-							overflow: hidden;
-							background-color: ${isDarkMode ? "#1e1e1e" : "#ffffff"};
-							color: ${isDarkMode ? "#e0e0e0" : "#000000"};
-						}
-						h2 { margin: 0 0 15px 0; font-size: 18px; }
-						p { margin: 5px 0; font-size: 14px; }
-						.info-text { font-size: 12px; color: ${isDarkMode ? "#aaa" : "#666"}; margin-bottom: 12px; }
-						input {
-							width: 100%;
-							padding: 8px;
-							font-size: 14px;
-							margin: 12px 0;
-							background-color: ${isDarkMode ? "#2d2d2d" : "#ffffff"};
-							border: 1px solid ${isDarkMode ? "#444" : "#ccc"};
-							color: ${isDarkMode ? "#e0e0e0" : "#000000"};
-						}
-						input:focus { outline: 2px solid #0078d4; border-color: #0078d4; }
-						.buttons {
-							display: flex;
-							justify-content: flex-end;
-							gap: 10px;
-							margin-top: 15px;
-						}
-						button {
-							padding: 8px 16px;
-							font-size: 14px;
-							cursor: pointer;
-							border-radius: 4px;
-						}
-						#cancel {
-							background: ${isDarkMode ? "#3a3a3a" : "#f0f0f0"};
-							border: 1px solid ${isDarkMode ? "#555" : "#ccc"};
-							color: ${isDarkMode ? "#e0e0e0" : "#000000"};
-						}
-						#rename { background: #0078d4; color: white; border: none; }
-						#rename:hover { background: #106ebe; }
-						#cancel:hover { background: ${isDarkMode ? "#4a4a4a" : "#e0e0e0"}; }
-					</style>
-				</head>
-				<body>
-					<h2>Rename Account</h2>
-					<p>Current: <strong>${currentName}</strong></p>
-					${revertText}
-					<input type="text" id="nameInput" value="${inputValue}" placeholder="${placeholder}" autofocus />
-					<div class="buttons">
-						<button id="cancel">Cancel</button>
-						<button id="rename">Rename</button>
-					</div>
-					<script>
-						const { ipcRenderer } = require('electron');
-						const input = document.getElementById('nameInput');
-						const cancelBtn = document.getElementById('cancel');
-						const renameBtn = document.getElementById('rename');
-
-						input.select();
-						input.focus();
-
-						function submit() {
-							ipcRenderer.send('rename-account-result', input.value);
-							window.close();
-						}
-
-						renameBtn.addEventListener('click', submit);
-						cancelBtn.addEventListener('click', () => window.close());
-
-						input.addEventListener('keydown', (e) => {
-							if (e.key === 'Enter') submit();
-							if (e.key === 'Escape') window.close();
-						});
-					</script>
-				</body>
-				</html>
-			`),
-			);
-
-			// Handle the result
-			const { ipcMain } = require("electron");
-			const handler = (_event, newName) => {
-				// Always allow submission (including empty) to let user clear manual override
-				if (newName !== null) {
-					this.accountManager.setAccountDisplayName(account.id, newName);
-				}
-				inputDialog.close();
-				ipcMain.removeListener("rename-account-result", handler);
-			};
-
-			ipcMain.once("rename-account-result", handler);
-
-			// Handle window close
-			inputDialog.on("closed", () => {
-				ipcMain.removeListener("rename-account-result", handler);
-			});
-
-			inputDialog.once("ready-to-show", () => {
-				inputDialog.show();
-				inputDialog.focus();
-			});
-		}
+		ipcMain.on('rename-account-result', handler);
+		inputDialog.on('closed', () => {
+			ipcMain.removeListener('rename-account-result', handler);
+		});
+		inputDialog.once('ready-to-show', () => {
+			inputDialog.show();
+			inputDialog.focus();
+		});
 	}
 
 	/**
@@ -624,22 +527,23 @@ class ApplicationTray {
 			return;
 		}
 
-		this.lastBadgeCount = count;
-		this.lastBadgeType = type;
-
 		// Find first available window for rendering badge
 		let windowForBadge = this.window;
 
 		if (this.accountManager && !windowForBadge) {
-			const accounts = this.accountManager.getAllAccounts();
-			const firstAccount = accounts.find(
-				(a) => a.window && !a.window.isDestroyed(),
-			);
-			if (firstAccount) {
-				windowForBadge = firstAccount.window;
+			const mainTabbedWindow = this.accountManager.mainTabbedWindow;
+			if (mainTabbedWindow && !mainTabbedWindow.isDestroyed()) {
+				windowForBadge = mainTabbedWindow;
+			} else {
+				const accounts = this.accountManager.getAllAccounts();
+				const firstAccount = accounts.find(
+					(a) => a.window && !a.window.isDestroyed(),
+				);
+				if (firstAccount) {
+					windowForBadge = firstAccount.window;
+				}
 			}
 		}
-
 		if (count > 0 && windowForBadge && windowForBadge.webContents) {
 			// Determine badge color based on type
 			const badgeColor = type === "reminder" ? "#FF6600" : "#FF0000"; // Orange for reminders, red for emails
@@ -654,51 +558,49 @@ class ApplicationTray {
 			// Render badge in the renderer process (has access to Canvas API)
 			try {
 				const dataURL = await windowForBadge.webContents.executeJavaScript(
-					`(function(iconSrc, color, count) {
+					`(async function(iconSrc, color, count) {
+						const encoded = iconSrc.substring(iconSrc.indexOf(',') + 1);
+						const binary = atob(encoded);
+						const bytes = Uint8Array.from(binary, (character) =>
+							character.charCodeAt(0),
+						);
+						const bitmap = await createImageBitmap(
+							new Blob([bytes], { type: 'image/png' }),
+						);
 						const canvas = document.createElement('canvas');
 						canvas.width = 140;
 						canvas.height = 140;
 						const ctx = canvas.getContext('2d');
 
-						// Load base icon
-						const image = new Image();
-						image.src = iconSrc;
+						ctx.drawImage(bitmap, 0, 0, 140, 140);
+						bitmap.close();
 
-						return new Promise((resolve) => {
-							image.onload = () => {
-								// Draw base icon
-								ctx.drawImage(image, 0, 0, 140, 140);
+						ctx.fillStyle = color;
+						ctx.beginPath();
+						ctx.arc(95, 50, 45, 0, 2 * Math.PI);
+						ctx.fill();
 
-								// Draw badge circle with color
-								ctx.fillStyle = color;
-								ctx.beginPath();
-								ctx.arc(95, 50, 45, 0, 2 * Math.PI);
-								ctx.fill();
+						ctx.strokeStyle = 'white';
+						ctx.lineWidth = 3;
+						ctx.stroke();
 
-								// Add white border
-								ctx.strokeStyle = 'white';
-								ctx.lineWidth = 3;
-								ctx.stroke();
+						const displayText = count > 9 ? '9+' : count.toString();
+						const fontSize = count > 9 ? 58 : 70;
+						ctx.textAlign = 'center';
+						ctx.textBaseline = 'middle';
+						ctx.fillStyle = 'white';
+						ctx.font = 'bold ' + fontSize + 'px Arial';
+						ctx.fillText(displayText, 95, 50);
 
-								// Draw count text
-								const displayText = count > 9 ? '9+' : count.toString();
-								const fontSize = count > 9 ? 58 : 70;
-
-								ctx.textAlign = 'center';
-								ctx.textBaseline = 'middle';
-								ctx.fillStyle = 'white';
-								ctx.font = 'bold ' + fontSize + 'px Arial';
-								ctx.fillText(displayText, 95, 50);
-
-								resolve(canvas.toDataURL());
-							};
-						});
+						return canvas.toDataURL();
 					})(${JSON.stringify(iconDataURL)}, ${JSON.stringify(badgeColor)}, ${count})`,
 				);
 
 				const image = nativeImage.createFromDataURL(dataURL);
 				this.tray.setImage(image);
 				this.tray.setToolTip(tooltipText);
+				this.lastBadgeCount = count;
+				this.lastBadgeType = type;
 			} catch (err) {
 				console.error("[Tray] Failed to render badge:", err);
 				console.error("[Tray] Badge color:", badgeColor);
@@ -711,6 +613,10 @@ class ApplicationTray {
 				this.baseTrayImage || nativeImage.createFromPath(this.iconPath),
 			);
 			this.tray.setToolTip("Microsoft Outlook");
+			if (count <= 0) {
+				this.lastBadgeCount = count;
+				this.lastBadgeType = type;
+			}
 		}
 	}
 
@@ -748,140 +654,59 @@ class ApplicationTray {
 		}
 	}
 
-	/**
-	 * Show a custom HTML dialog to select which account window to open
-	 * @param {Array} accounts - List of accounts
-	 */
 	showAccountSelectionDialog(accounts) {
-		const { BrowserWindow, ipcMain } = require("electron");
-
-		// Calculate height based on number of accounts + show all button
-		const baseHeight = 140;
-		const accountHeight = 45;
-		const height = Math.min(
-			baseHeight + (accounts.length + 1) * accountHeight,
-			500,
-		);
-
-		// Get dark mode preference
+		const { BrowserWindow, ipcMain } = require('electron');
 		const isDarkMode = nativeTheme.shouldUseDarkColors;
-
-		// Create selection dialog
+		const height = Math.min(140 + (accounts.length + 1) * 45, 500);
 		const selectDialog = new BrowserWindow({
 			width: 400,
-			height: height,
+			height,
 			resizable: false,
 			modal: false,
 			show: false,
 			autoHideMenuBar: true,
-			title: "Select Account",
-			backgroundColor: isDarkMode ? "#1e1e1e" : "#ffffff",
+			title: 'Select Account',
+			backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
 			webPreferences: {
-				nodeIntegration: true,
-				contextIsolation: false,
+				preload: path.join(__dirname, '..', 'dialogs', 'preload.js'),
+				nodeIntegration: false,
+				contextIsolation: true,
+				sandbox: true,
+				additionalArguments: [
+					'--dialog-type=tray-account',
+					`--dialog-data=${encodeURIComponent(JSON.stringify({
+						isDarkMode,
+						accounts: accounts.map(({ id, displayName }) => ({ id, displayName })),
+					}))}`,
+				],
 			},
 		});
 
-		// Build account buttons HTML
-		const accountButtons = accounts
-			.map(
-				(a, i) =>
-					`<button class="account-btn" data-index="${i}" data-id="${a.id}">${a.displayName}</button>`,
-			)
-			.join("");
+		selectDialog.loadFile(path.join(__dirname, '..', 'dialogs', 'dialog.html'));
 
-		selectDialog.loadURL(
-			"data:text/html;charset=utf-8," +
-				encodeURIComponent(`
-			<!DOCTYPE html>
-			<html>
-			<head>
-				<meta name="color-scheme" content="${isDarkMode ? "dark" : "light"}">
-				<style>
-					* { box-sizing: border-box; }
-					body {
-						font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-						padding: 20px;
-						margin: 0;
-						background-color: ${isDarkMode ? "#1e1e1e" : "#ffffff"};
-						color: ${isDarkMode ? "#e0e0e0" : "#000000"};
-					}
-					h2 { margin: 0 0 10px 0; font-size: 18px; }
-					p { margin: 5px 0 15px 0; font-size: 14px; color: ${isDarkMode ? "#aaa" : "#666"}; }
-					.account-list {
-						display: flex;
-						flex-direction: column;
-						gap: 8px;
-						max-height: 350px;
-						overflow-y: auto;
-					}
-					.account-btn, .show-all-btn {
-						padding: 12px;
-						text-align: left;
-						background: ${isDarkMode ? "#2d2d2d" : "#f5f5f5"};
-						border: 1px solid ${isDarkMode ? "#444" : "#ddd"};
-						border-radius: 4px;
-						cursor: pointer;
-						font-size: 14px;
-						transition: background 0.2s;
-						color: ${isDarkMode ? "#e0e0e0" : "#000000"};
-					}
-					.account-btn:hover, .show-all-btn:hover {
-						background: ${isDarkMode ? "#3a3a3a" : "#e5e5e5"};
-					}
-					.show-all-btn {
-						background: ${isDarkMode ? "#1a3a5c" : "#e8f4ff"};
-						border-color: #0078d4;
-						font-weight: 500;
-					}
-					.show-all-btn:hover {
-						background: ${isDarkMode ? "#2a4a6c" : "#d0e8ff"};
-					}
-				</style>
-			</head>
-			<body>
-				<h2>Select Account</h2>
-				<p>Which account window would you like to open?</p>
-				<div class="account-list">
-					<button class="show-all-btn" data-action="show-all">Show All Windows</button>
-					${accountButtons}
-				</div>
-				<script>
-					const { ipcRenderer } = require('electron');
-
-					document.querySelector('.show-all-btn').addEventListener('click', () => {
-						ipcRenderer.send('tray-account-selection', { action: 'show-all' });
-						window.close();
-					});
-
-					document.querySelectorAll('.account-btn').forEach(btn => {
-						btn.addEventListener('click', () => {
-							ipcRenderer.send('tray-account-selection', { action: 'focus', accountId: btn.dataset.id });
-							window.close();
-						});
-					});
-				</script>
-			</body>
-			</html>
-		`),
-		);
-
-		const handler = (_event, result) => {
-			if (result.action === "show-all") {
-				this.showAllWindows();
-			} else if (result.action === "focus" && result.accountId) {
-				this.focusAccount(result.accountId);
+		const handler = (event, result) => {
+			if (event.sender !== selectDialog.webContents || !result || typeof result !== 'object') {
+				return;
 			}
-			ipcMain.removeListener("tray-account-selection", handler);
+			if (result.action === 'show-all') {
+				this.showAllWindows();
+			} else if (
+				result.action === 'focus' &&
+				accounts.some((account) => account.id === result.accountId)
+			) {
+				this.focusAccount(result.accountId);
+			} else {
+				return;
+			}
+			ipcMain.removeListener('tray-account-selection', handler);
+			selectDialog.close();
 		};
 
-		ipcMain.once("tray-account-selection", handler);
-
-		selectDialog.on("closed", () => {
-			ipcMain.removeListener("tray-account-selection", handler);
+		ipcMain.on('tray-account-selection', handler);
+		selectDialog.on('closed', () => {
+			ipcMain.removeListener('tray-account-selection', handler);
 		});
-
-		selectDialog.once("ready-to-show", () => {
+		selectDialog.once('ready-to-show', () => {
 			selectDialog.show();
 			selectDialog.focus();
 		});

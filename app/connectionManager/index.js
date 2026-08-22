@@ -1,5 +1,6 @@
 const { ipcMain, net, powerMonitor } = require('electron');
 const { LucidLog } = require('lucid-log');
+const { isTrustedWebContents } = require('../security');
 
 let _ConnectionManager_window = new WeakMap();
 let _ConnectionManager_config = new WeakMap();
@@ -121,13 +122,9 @@ class ConnectionManager {
 	}
 }
 
-/**
- * 
- * @param {ConnectionManager} cm 
- */
 function assignOfflineRetryHandler(cm) {
-	return () => {
-		cm.refresh();
+	return (event) => {
+		if (isTrustedWebContents(event.sender, cm.config)) cm.refresh();
 	};
 }
 
