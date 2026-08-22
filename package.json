@@ -1,7 +1,7 @@
 {
   "name": "outlook-for-linux",
   "productName": "outlook-for-linux",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "main": "app/index.js",
   "description": "Unofficial client for Microsoft Outlook for Linux",
   "homepage": "https://github.com/mahmoudbahaa/outlook-for-linux",
@@ -59,7 +59,7 @@
     "appId": "outlook-for-linux",
     "productName": "outlook-for-linux",
     "extraMetadata": {
-      "version": "1.4.0"
+      "version": "1.4.1"
     },
     "protocols": {
       "name": "msoutlook",
