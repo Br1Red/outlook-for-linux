@@ -1,7 +1,7 @@
 console.log("[Preload] Script starting...");
 
 (async function () {
-	const { ipcRenderer, shell } = require("electron");
+	const { ipcRenderer, shell, webFrame } = require("electron");
 
 	console.log("[Preload] Inside IIFE, getting config...");
 
@@ -738,12 +738,62 @@ function detectAccountEmail(accountId, ipcRenderer) {
 	startObserver();
 }
 
-/**
- * @param {object} config
- * @param {Electron.IpcRenderer} ipcRenderer
- */
 function initializeModules(config, ipcRenderer) {
-	require("./tools/zoom").init(config);
-	require("./tools/shortcuts").init(config);
-	require("./tools/settings").init(config, ipcRenderer);
+	const zoomLevels = { '+': 0.25, '-': -0.25, '0': 0 };
+
+	function saveZoomLevel() {
+		ipcRenderer.invoke('saveZoomLevel', {
+			partition: config.partition,
+			zoomLevel: webFrame.getZoomLevel(),
+		});
+	}
+
+	function setNextZoomLevel(keyName) {
+		const zoomFactor = zoomLevels[keyName];
+		if (typeof zoomFactor !== 'number') return;
+		const currentZoom = webFrame.getZoomLevel();
+		webFrame.setZoomLevel(zoomFactor === 0 ? 0 : currentZoom + zoomFactor);
+		saveZoomLevel();
+	}
+
+	ipcRenderer.invoke('getZoomLevel', config.partition).then((zoomLevel) => {
+		webFrame.setZoomLevel(zoomLevel);
+	});
+	ipcRenderer.on('zoom-changed', (_event, zoomDirection) => {
+		setNextZoomLevel(zoomDirection === 'in' ? '+' : '-');
+	});
+
+	const keyMap = {
+		'CTRL_+': () => setNextZoomLevel('+'),
+		'CTRL_-': () => setNextZoomLevel('-'),
+		CTRL_0: () => setNextZoomLevel('0'),
+		ALT_ArrowLeft: () => window.history.back(),
+		ALT_ArrowRight: () => window.history.forward(),
+	};
+	const handleKeyDown = (event) => {
+		if (event.key === 'Control' || event.key === 'Alt') return;
+		const key = `${event.ctrlKey ? 'CTRL_' : ''}${event.altKey ? 'ALT_' : ''}${event.key}`;
+		if (typeof keyMap[key] === 'function') keyMap[key]();
+	};
+	const attachShortcuts = () => {
+		window.addEventListener('keydown', handleKeyDown, false);
+		const iframe = document.getElementsByTagName('iframe')[0];
+		if (iframe?.contentDocument) {
+			iframe.contentDocument.addEventListener('keydown', handleKeyDown, false);
+		} else {
+			setTimeout(attachShortcuts, 4000);
+		}
+	};
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', attachShortcuts, { once: true });
+	} else {
+		attachShortcuts();
+	}
+
+	ipcRenderer.on('get-outlook-settings', (event) => {
+		event.sender.send('get-outlook-settings', {});
+	});
+	ipcRenderer.on('set-outlook-settings', (event) => {
+		event.sender.send('set-outlook-settings', true);
+	});
 }

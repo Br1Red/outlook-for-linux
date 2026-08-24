@@ -1,3 +1,5 @@
+const { isSafeExternalUrl, isTrustedUrl } = require('../security');
+
 /**
  * TabManager - Manages tabs within a single main window
  * Each tab represents one account with isolated session
@@ -73,26 +75,33 @@ class TabManager {
 				preload: path.join(__dirname, "..", "browser", "index.js"),
 				additionalArguments: [`--accountId=${account.id}`], // GLM-5 FIX 2: Removed '--tab-mode'
 				plugins: true, // CRITICAL: Required for Outlook auth
-				contextIsolation: false,
-				sandbox: false,
+				nodeIntegration: false,
+				contextIsolation: true,
+				sandbox: true,
 				spellcheck: false,
 			},
 		});
 
-		// CRITICAL: Enable @electron/remote IMMEDIATELY after BrowserView creation
-		require("@electron/remote/main").enable(browserView.webContents);
+		const tabWebContents = browserView.webContents;
 
 		// Add BrowserView to main window
 		this.mainWindow.addBrowserView(browserView);
 
-		// Get the webContents from the BrowserView
-		const tabWebContents = browserView.webContents;
+		tabWebContents.on("zoom-changed", (_event, zoomDirection) => {
+			tabWebContents.send("zoom-changed", zoomDirection);
+		});
 
 		// Handle opening links in external browser
 		tabWebContents.setWindowOpenHandler(({ url }) => {
-			const { shell } = require("electron");
-			shell.openExternal(url);
-			return { action: "deny" };
+			const { shell } = require('electron');
+			if (isSafeExternalUrl(url)) shell.openExternal(url);
+			return { action: 'deny' };
+		});
+		tabWebContents.on('will-navigate', (event, url) => {
+			if (!isTrustedUrl(url, this.config)) {
+				event.preventDefault();
+				if (isSafeExternalUrl(url)) require('electron').shell.openExternal(url);
+			}
 		});
 
 		// Forward hovered link URLs to the renderer for the link preview tooltip

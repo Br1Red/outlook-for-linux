@@ -7,6 +7,7 @@ const help = require("./help");
 const Tray = require("./tray");
 const { LucidLog } = require("lucid-log");
 const connectionManager = require("../connectionManager");
+const { isTrustedWebContents } = require("../security");
 
 class Menus {
 	constructor(window, config, iconPath, appConfig) {
@@ -390,12 +391,17 @@ class Menus {
 	}
 
 	initializeEventHandlers() {
-		app.on("before-quit", () => this.onBeforeQuit());
-		ipcMain.on("get-outlook-settings", saveSettingsInternal);
-		ipcMain.on("set-outlook-settings", restoreSettingsInternal);
-		// Only attach close handler if we have a window (single account mode)
+		app.on('before-quit', () => this.onBeforeQuit());
+		ipcMain.on('get-outlook-settings', (event, arg) => {
+			if (!isTrustedWebContents(event.sender, this.config)) return;
+			saveSettingsInternal(event, arg, this.window);
+		});
+		ipcMain.on('set-outlook-settings', (event, arg) => {
+			if (!isTrustedWebContents(event.sender, this.config)) return;
+			restoreSettingsInternal(event, arg, this.window);
+		});
 		if (this.window) {
-			this.window.on("close", (event) => this.onClose(event));
+			this.window.on('close', (event) => this.onClose(event));
 		}
 	}
 
@@ -468,24 +474,25 @@ class Menus {
 	}
 }
 
-function saveSettingsInternal(_event, arg) {
+function saveSettingsInternal(_event, arg, targetWindow) {
+	if (!arg || typeof arg !== 'object' || Array.isArray(arg)) return;
 	fs.writeFileSync(
-		path.join(app.getPath("userData"), "outlook_settings.json"),
+		path.join(app.getPath('userData'), 'outlook_settings.json'),
 		JSON.stringify(arg),
 	);
-	dialog.showMessageBoxSync(this.window, {
-		message: "Settings have been saved successfully!",
-		title: "Save settings",
-		type: "info",
+	dialog.showMessageBoxSync(targetWindow || null, {
+		message: 'Settings have been saved successfully!',
+		title: 'Save settings',
+		type: 'info',
 	});
 }
 
-function restoreSettingsInternal(_event, arg) {
+function restoreSettingsInternal(_event, arg, targetWindow) {
 	if (arg) {
-		dialog.showMessageBoxSync(this.window, {
-			message: "Settings have been restored successfully!",
-			title: "Restore settings",
-			type: "info",
+		dialog.showMessageBoxSync(targetWindow || null, {
+			message: 'Settings have been restored successfully!',
+			title: 'Restore settings',
+			type: 'info',
 		});
 	}
 }

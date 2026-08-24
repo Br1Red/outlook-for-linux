@@ -4,6 +4,7 @@ const windowStateKeeper = require("electron-window-state");
 const { LucidLog } = require("lucid-log");
 const TrayIconChooser = require("../browser/tools/trayIconChooser");
 const TabManager = require("./tabManager");
+const { isSafeExternalUrl, isTrustedUrl } = require("../security");
 
 /**
  * Manages multiple Outlook accounts with isolated sessions
@@ -221,9 +222,9 @@ class AccountManager {
 			icon: this.iconChooser.getFile(),
 			webPreferences: {
 				partition: "persist:outlook-tabbed-ui",
-				nodeIntegration: true,
-				contextIsolation: false,
-				sandbox: false,
+				nodeIntegration: false,
+				contextIsolation: true,
+				sandbox: true,
 				preload: path.join(__dirname, "tabbar-preload.js"),
 			},
 		});
@@ -438,16 +439,29 @@ class AccountManager {
 				partition: account.partition,
 				preload: path.join(__dirname, "..", "browser", "index.js"),
 				plugins: true,
-				contextIsolation: false,
-				sandbox: false,
+				nodeIntegration: false,
+				contextIsolation: true,
+				sandbox: true,
 				spellcheck: false,
 				additionalArguments: [`--accountId=${account.id}`],
 			},
 		});
 
-		// Enable @electron/remote for this window
-		require("@electron/remote/main").enable(window.webContents);
+		window.webContents.on("zoom-changed", (_event, zoomDirection) => {
+			window.webContents.send("zoom-changed", zoomDirection);
+		});
 		this.attachIntuneSession(window.webContents.session);
+		window.webContents.setWindowOpenHandler(({ url }) => {
+			const { shell } = require('electron');
+			if (isSafeExternalUrl(url)) shell.openExternal(url);
+			return { action: 'deny' };
+		});
+		window.webContents.on('will-navigate', (event, url) => {
+			if (!isTrustedUrl(url, this.config)) {
+				event.preventDefault();
+				if (isSafeExternalUrl(url)) require('electron').shell.openExternal(url);
+			}
+		});
 
 		// Store reference
 		account.window = window;

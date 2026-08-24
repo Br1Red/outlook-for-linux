@@ -3,26 +3,20 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none';">
+    <link rel="stylesheet" href="login.css">
     <title>Login Dialog</title>
 </head>
 
 <body>
 
-    <form name="form" onSubmit="JavaScript:sendForm(event)">
-        <input type="text" name="username" id="username" value="" placeholder="email of/or domain\username" type="email"
-            autofocus style="width: 342px;">
-        <br><br>
-        <input type="password" name="password" id="password" value="" placeholder="Password" style="width: 342px;">
-        <br><br>
-        <input type="submit" value="Submit" style="
-                background-color: rgb(38, 114, 236);     
-                border: none;
-                min-width: 80px;
-                padding: 4px 20px 6px 20px;
-                color: rgb(255, 255, 255);">
+    <form name="form" id="login-form">
+        <input type="email" name="username" id="username" placeholder="email of/or domain\username" autofocus>
+        <input type="password" name="password" id="password" placeholder="Password">
+        <input type="submit" value="Submit">
     </form>
 
-    <script src='formSender.js'></script>
+    <script src="formSender.js" defer></script>
 </body>
 
 </html>

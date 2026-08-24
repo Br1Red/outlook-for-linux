@@ -1,5 +1,6 @@
 const { BrowserWindow, screen } = require('electron');
 const path = require('path');
+const { isSafeExternalUrl, isTrustedUrl } = require('../security');
 
 /**
  * Quick Compose Dialog - A small popup window for composing emails
@@ -62,10 +63,22 @@ class QuickCompose {
 			webPreferences: {
 				partition: account.partition,
 				nodeIntegration: false,
-				contextIsolation: false,
-				sandbox: false,
+				contextIsolation: true,
+				sandbox: true,
 				preload: path.join(__dirname, '..', 'browser', 'index.js'),
 				additionalArguments: [`--accountId=${account.id}`]
+			}
+		});
+
+		this.dialogWindow.webContents.setWindowOpenHandler(({ url }) => {
+			const { shell } = require('electron');
+			if (isSafeExternalUrl(url)) shell.openExternal(url);
+			return { action: 'deny' };
+		});
+		this.dialogWindow.webContents.on('will-navigate', (event, nextUrl) => {
+			if (!isTrustedUrl(nextUrl, this.config)) {
+				event.preventDefault();
+				if (isSafeExternalUrl(nextUrl)) require('electron').shell.openExternal(nextUrl);
 			}
 		});
 

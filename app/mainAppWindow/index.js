@@ -1,4 +1,4 @@
-require("@electron/remote/main").initialize();
+
 const { BrowserWindow, nativeTheme } = require("electron");
 const isDarkMode = nativeTheme.shouldUseDarkColors;
 const path = require("path");
@@ -9,6 +9,7 @@ const TrayIconChooser = require("../browser/tools/trayIconChooser");
 const { AppConfiguration } = require("../appConfiguration");
 const notificationModule = require("../notification");
 const QuickCompose = require("../quickCompose");
+const { isSafeExternalUrl, isTrustedUrl } = require("../security");
 
 /**
  * @type {TrayIconChooser}
@@ -195,305 +196,122 @@ function processArgs(args) {
 	}
 }
 
-/**
- * Show a dialog to select which account to use for mailto
- * @param {AccountManager} accountManager
- * @returns {Promise<string|null>} Account ID or null if cancelled
- */
 function showAccountSelectionDialog(accountManager) {
 	return new Promise((resolve) => {
-		const { BrowserWindow, ipcMain } = require("electron");
+		const { BrowserWindow, ipcMain } = require('electron');
 		const accounts = accountManager.getAllAccounts();
 		if (accounts.length === 0) {
 			resolve(null);
 			return;
 		}
 
-		// Get dark mode preference
 		const isDarkMode = nativeTheme.shouldUseDarkColors;
-
-		// Calculate height based on number of accounts
-		const baseHeight = 140;
-		const accountHeight = 45;
-		const height = Math.min(baseHeight + accounts.length * accountHeight, 500);
-
-		// Create selection dialog - same pattern as tray dialog (modal: false, no parent)
+		const height = Math.min(140 + accounts.length * 45, 500);
 		const selectDialog = new BrowserWindow({
 			width: 400,
-			height: height,
+			height,
 			resizable: false,
 			modal: false,
 			show: false,
 			autoHideMenuBar: true,
-			title: "Select Account",
-			backgroundColor: isDarkMode ? "#1e1e1e" : "#ffffff",
+			title: 'Select Account',
+			backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
 			webPreferences: {
-				nodeIntegration: true,
-				contextIsolation: false,
+				preload: path.join(__dirname, '..', 'dialogs', 'preload.js'),
+				nodeIntegration: false,
+				contextIsolation: true,
+				sandbox: true,
+				additionalArguments: [
+					'--dialog-type=mailto-account',
+					`--dialog-data=${encodeURIComponent(JSON.stringify({
+						isDarkMode,
+						accounts: accounts.map(({ id, displayName }) => ({ id, displayName })),
+					}))}`,
+				],
 			},
 		});
 
-		// Build account buttons HTML
-		const accountButtons = accounts
-			.map(
-				(a) =>
-					`<button class="account-btn" data-id="${a.id}">${a.displayName}</button>`,
-			)
-			.join("");
+		selectDialog.loadFile(path.join(__dirname, '..', 'dialogs', 'dialog.html'));
 
-		selectDialog.loadURL(
-			"data:text/html;charset=utf-8," +
-				encodeURIComponent(`
-			<!DOCTYPE html>
-			<html>
-			<head>
-				<meta name="color-scheme" content="${isDarkMode ? "dark" : "light"}">
-				<style>
-					* { box-sizing: border-box; }
-					body {
-						font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-						padding: 20px;
-						margin: 0;
-						background-color: ${isDarkMode ? "#1e1e1e" : "#ffffff"};
-						color: ${isDarkMode ? "#e0e0e0" : "#000000"};
-					}
-					h2 { margin: 0 0 10px 0; font-size: 18px; }
-					p { margin: 5px 0 15px 0; font-size: 14px; color: ${isDarkMode ? "#aaa" : "#666"}; }
-					.account-list {
-						display: flex;
-						flex-direction: column;
-						gap: 8px;
-						max-height: 350px;
-						overflow-y: auto;
-					}
-					.account-btn {
-						padding: 12px;
-						text-align: left;
-						background: ${isDarkMode ? "#2d2d2d" : "#f5f5f5"};
-						border: 1px solid ${isDarkMode ? "#444" : "#ddd"};
-						border-radius: 4px;
-						cursor: pointer;
-						font-size: 14px;
-						color: ${isDarkMode ? "#e0e0e0" : "#000000"};
-					}
-					.account-btn:hover {
-						background: ${isDarkMode ? "#3a3a3a" : "#e5e5e5"};
-					}
-				</style>
-			</head>
-			<body>
-				<h2>Select Account</h2>
-				<p>Which account would you like to use?</p>
-				<div class="account-list">
-					${accountButtons}
-				</div>
-				<script>
-					const { ipcRenderer } = require('electron');
-
-					document.querySelectorAll('.account-btn').forEach(btn => {
-						btn.addEventListener('click', () => {
-							ipcRenderer.send('mailto-account-selected', btn.dataset.id);
-							window.close();
-						});
-					});
-				</script>
-			</body>
-			</html>
-		`),
-		);
-
-		const handler = (_event, accountId) => {
-			resolve(accountId || null);
-			ipcMain.removeListener("mailto-account-selected", handler);
+		const handler = (event, accountId) => {
+			if (
+				event.sender !== selectDialog.webContents ||
+				!accounts.some((account) => account.id === accountId)
+			) {
+				return;
+			}
+			resolve(accountId);
+			ipcMain.removeListener('mailto-account-selected', handler);
+			selectDialog.close();
 		};
 
-		ipcMain.once("mailto-account-selected", handler);
-
-		selectDialog.on("closed", () => {
-			ipcMain.removeListener("mailto-account-selected", handler);
+		ipcMain.on('mailto-account-selected', handler);
+		selectDialog.on('closed', () => {
+			ipcMain.removeListener('mailto-account-selected', handler);
 			resolve(null);
 		});
-
-		selectDialog.once("ready-to-show", () => {
+		selectDialog.once('ready-to-show', () => {
 			selectDialog.show();
 			selectDialog.focus();
 		});
 	});
 }
 
-/**
- * Show startup account chooser dialog
- * Similar to tray selection but allows choosing which accounts to open on startup
- * @param {AccountManager} accountManager
- * @returns {Promise<void>}
- */
 async function showStartupAccountChooser(accountManager) {
-	const { BrowserWindow, ipcMain } = require("electron");
+	const { BrowserWindow, ipcMain } = require('electron');
 	const accounts = accountManager.getAllAccounts();
-
-	// Get dark mode preference
 	const isDarkMode = nativeTheme.shouldUseDarkColors;
-
-	// Calculate height based on number of accounts + header + buttons
-	const baseHeight = 180;
-	const accountHeight = 50;
-	const height = Math.min(baseHeight + accounts.length * accountHeight, 500);
-
-	// Create selection dialog
+	const height = Math.min(180 + accounts.length * 50, 500);
 	const selectDialog = new BrowserWindow({
 		width: 420,
-		height: height,
+		height,
 		resizable: false,
 		modal: false,
 		show: false,
 		autoHideMenuBar: true,
-		title: "Select Accounts",
-		backgroundColor: isDarkMode ? "#1e1e1e" : "#ffffff",
+		title: 'Select Accounts',
+		backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff',
 		webPreferences: {
-			nodeIntegration: true,
-			contextIsolation: false,
+			preload: path.join(__dirname, '..', 'dialogs', 'preload.js'),
+			nodeIntegration: false,
+			contextIsolation: true,
+			sandbox: true,
+			additionalArguments: [
+				'--dialog-type=startup-account',
+				`--dialog-data=${encodeURIComponent(JSON.stringify({
+					isDarkMode,
+					accounts: accounts.map(({ id, displayName, autoRestore }) => ({
+						id,
+						displayName,
+						autoRestore,
+					})),
+				}))}`,
+			],
 		},
 	});
 
-	// Build account checkboxes HTML
-	const accountItems = accounts
-		.map(
-			(a) =>
-				`<label class="account-item">
-			<input type="checkbox" data-id="${a.id}" ${a.autoRestore !== false ? "checked" : ""}>
-			<span>${a.displayName}</span>
-		</label>`,
-		)
-		.join("");
+	selectDialog.loadFile(path.join(__dirname, '..', 'dialogs', 'dialog.html'));
 
-	selectDialog.loadURL(
-		"data:text/html;charset=utf-8," +
-			encodeURIComponent(`
-		<!DOCTYPE html>
-		<html>
-		<head>
-			<meta name="color-scheme" content="${isDarkMode ? "dark" : "light"}">
-			<style>
-				* { box-sizing: border-box; }
-				body {
-					font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-					padding: 20px;
-					margin: 0;
-					background-color: ${isDarkMode ? "#1e1e1e" : "#ffffff"};
-					color: ${isDarkMode ? "#e0e0e0" : "#000000"};
-				}
-				h2 { margin: 0 0 10px 0; font-size: 18px; }
-				p { margin: 5px 0 15px 0; font-size: 14px; color: ${isDarkMode ? "#aaa" : "#666"}; }
-				.account-list {
-					display: flex;
-					flex-direction: column;
-					gap: 8px;
-					max-height: 300px;
-					overflow-y: auto;
-					margin-bottom: 15px;
-				}
-				.account-item {
-					display: flex;
-					align-items: center;
-					gap: 10px;
-					padding: 10px;
-					background: ${isDarkMode ? "#2d2d2d" : "#f5f5f5"};
-					border: 1px solid ${isDarkMode ? "#444" : "#ddd"};
-					border-radius: 4px;
-					cursor: pointer;
-					transition: background 0.2s;
-				}
-				.account-item:hover {
-					background: ${isDarkMode ? "#3a3a3a" : "#e9e9e9"};
-				}
-				.account-item input[type="checkbox"] {
-					width: 18px;
-					height: 18px;
-					cursor: pointer;
-				}
-				.account-item span {
-					flex: 1;
-					color: ${isDarkMode ? "#e0e0e0" : "#000000"};
-				}
-				.buttons {
-					display: flex;
-					justify-content: flex-end;
-					gap: 10px;
-				}
-				button {
-					padding: 10px 20px;
-					font-size: 14px;
-					cursor: pointer;
-					border-radius: 4px;
-					border: none;
-				}
-				#cancel {
-					background: ${isDarkMode ? "#3a3a3a" : "#f0f0f0"};
-					color: ${isDarkMode ? "#e0e0e0" : "#000000"};
-				}
-				#open {
-					background: #0078d4;
-					color: white;
-				}
-				#open:hover { background: #106ebe; }
-				#cancel:hover { background: ${isDarkMode ? "#4a4a4a" : "#e0e0e0"}; }
-			</style>
-		</head>
-		<body>
-			<h2>Select Accounts to Open</h2>
-			<p>Choose which accounts to open on startup:</p>
-			<div class="account-list">
-				${accountItems}
-			</div>
-			<div class="buttons">
-				<button id="open">Open Selected</button>
-			</div>
-			<script>
-				const { ipcRenderer } = require('electron');
-
-				// Toggle checkbox when clicking the label
-				document.querySelectorAll('.account-item').forEach(item => {
-					item.addEventListener('click', (e) => {
-						if (e.target.tagName !== 'INPUT') {
-							const checkbox = item.querySelector('input');
-							checkbox.checked = !checkbox.checked;
-						}
-					});
-				});
-
-				document.getElementById('open').addEventListener('click', () => {
-					const checkedIds = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'))
-						.map(cb => cb.dataset.id);
-					ipcRenderer.send('startup-account-selection', checkedIds);
-					window.close();
-				});
-			</script>
-		</body>
-		</html>
-	`),
-	);
-
-	const handler = (_event, accountIds) => {
-		if (accountIds && accountIds.length > 0) {
-			// Create windows for selected accounts
-			accountIds.forEach((id) => {
-				const account = accountManager.getAccount(id);
-				if (account) {
-					accountManager.createAccountWindow(account);
-				}
-			});
+	const handler = (event, accountIds) => {
+		if (event.sender !== selectDialog.webContents || !Array.isArray(accountIds)) {
+			return;
 		}
-		ipcMain.removeListener("startup-account-selection", handler);
+		const validIds = accountIds.filter((id) =>
+			accounts.some((account) => account.id === id),
+		);
+		validIds.forEach((id) => {
+			const account = accountManager.getAccount(id);
+			if (account) accountManager.createAccountWindow(account);
+		});
+		ipcMain.removeListener('startup-account-selection', handler);
+		selectDialog.close();
 	};
 
-	ipcMain.once("startup-account-selection", handler);
-
-	selectDialog.on("closed", () => {
-		ipcMain.removeListener("startup-account-selection", handler);
-		// If dialog is closed without selection, open no windows
+	ipcMain.on('startup-account-selection', handler);
+	selectDialog.on('closed', () => {
+		ipcMain.removeListener('startup-account-selection', handler);
 	});
-
-	selectDialog.once("ready-to-show", () => {
+	selectDialog.once('ready-to-show', () => {
 		selectDialog.show();
 		selectDialog.focus();
 	});
@@ -541,8 +359,9 @@ async function openComposeWindow(url, accountManager) {
 		webPreferences: {
 			partition: targetPartition,
 			preload: path.join(__dirname, "..", "browser", "index.js"),
-			contextIsolation: false,
-			sandbox: false,
+			nodeIntegration: false,
+			contextIsolation: true,
+			sandbox: true,
 			spellcheck: false,
 			additionalArguments: targetAccountId
 				? [`--accountId=${targetAccountId}`]
@@ -550,7 +369,20 @@ async function openComposeWindow(url, accountManager) {
 		},
 	});
 
-	require("@electron/remote/main").enable(composeWindow.webContents);
+	composeWindow.webContents.setWindowOpenHandler(({ url }) => {
+		const { shell } = require("electron");
+		if (isSafeExternalUrl(url)) shell.openExternal(url);
+		return { action: "deny" };
+	});
+	composeWindow.webContents.on("will-navigate", (event, nextUrl) => {
+		if (!isTrustedUrl(nextUrl, config)) {
+			event.preventDefault();
+			if (isSafeExternalUrl(nextUrl)) require("electron").shell.openExternal(nextUrl);
+		}
+	});
+	composeWindow.webContents.on("zoom-changed", (_event, zoomDirection) => {
+		composeWindow.webContents.send("zoom-changed", zoomDirection);
+	});
 
 	composeWindow.once("ready-to-show", () => {
 		composeWindow.show();

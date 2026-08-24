@@ -1,4 +1,5 @@
 # outlook-for-linux
+> Actively maintained fork of [`mahmoudbahaa/outlook-for-linux`](https://github.com/mahmoudbahaa/outlook-for-linux)
 
 This is an unofficial Microsoft Outlook client.
 

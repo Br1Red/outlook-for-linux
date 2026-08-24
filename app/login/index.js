@@ -8,27 +8,24 @@ exports.loginService = function loginService(parentWindow, callback) {
 		modal: true,
 		frame: false,
 		parent: parentWindow,
-
 		show: false,
 		autoHideMenuBar: true,
 		webPreferences: {
-			contextIsolation: false,
-			nodeIntegration: true
-		}
-	});
-	require('@electron/remote/main').enable(win.webContents);
-
-	win.once('ready-to-show', () => {
-		win.show();
+			preload: `${__dirname}/preload.js`,
+			nodeIntegration: false,
+			contextIsolation: true,
+			sandbox: true,
+		},
 	});
 
-	ipcMain.on('submitForm', submitFormHandler(callback, win));
-
+	const handler = submitFormHandler(callback, win);
+	ipcMain.on('submitForm', handler);
+	win.once('ready-to-show', () => win.show());
 	win.on('closed', () => {
+		ipcMain.removeListener('submitForm', handler);
 		win = null;
 	});
-
-	win.loadURL(`file://${__dirname}/login.html`);
+	win.loadFile(`${__dirname}/login.html`);
 };
 
 exports.handleLoginDialogTry = function handleLoginDialogTry(window) {
@@ -48,6 +45,14 @@ exports.handleLoginDialogTry = function handleLoginDialogTry(window) {
 
 function submitFormHandler(callback, win) {
 	return (event, data) => {
+		if (
+			event.sender !== win.webContents ||
+			!data ||
+			typeof data.username !== 'string' ||
+			typeof data.password !== 'string'
+		) {
+			return;
+		}
 		callback(data.username, data.password);
 		win.close();
 	};
