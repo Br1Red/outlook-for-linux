@@ -91,9 +91,36 @@ class TabManager {
 			tabWebContents.send("zoom-changed", zoomDirection);
 		});
 
-		// Handle opening links in external browser
-		tabWebContents.setWindowOpenHandler(({ url }) => {
+        // Handle opening links in external browser. OAuth popups (e.g. the
+        // Mimecast login dialog) call window.open() with explicit popup
+        // dimensions and rely on window.opener to postMessage the result back,
+        // so ONLY sized popups open as in-app child windows sharing this tab's
+        // session; ordinary links (window.open with only 'noopener,noreferrer')
+        // still go to the external browser. A Ctrl+Click also requests a sized
+        // popup and therefore stays inside the app.
+        tabWebContents.setWindowOpenHandler((details) => {
 			const { shell } = require('electron');
+            const { url, features } = details;
+            const featureStr = typeof features === 'string' ? features : '';
+            const isAuthPopup =
+                /(?:^|[,\s])(?:width|height|innerwidth|innerheight)\s*=/i.test(
+                    featureStr,
+                );
+            if (isAuthPopup && (isSafeExternalUrl(url) || url === 'about:blank')) {
+                return {
+                    action: 'allow',
+                    overrideBrowserWindowOptions: {
+                        autoHideMenuBar: true,
+                        webPreferences: {
+                            partition: account.partition,
+                            preload: path.join(__dirname, '..', 'browser', 'index.js'),
+                            nodeIntegration: false,
+                            contextIsolation: true,
+                            sandbox: true,
+                        },
+                    },
+                };
+            }
 			if (isSafeExternalUrl(url)) shell.openExternal(url);
 			return { action: 'deny' };
 		});
