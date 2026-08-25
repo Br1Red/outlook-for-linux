@@ -1,7 +1,7 @@
 console.log("[Preload] Script starting...");
 
 (async function () {
-	const { ipcRenderer, shell, webFrame } = require("electron");
+    const { ipcRenderer, webFrame } = require("electron");
 
 	console.log("[Preload] Inside IIFE, getting config...");
 
@@ -74,8 +74,10 @@ console.log("[Preload] Script starting...");
 		},
 	});
 
-	// Ctrl+Click on links opens them in the default system browser.
-	// Normal left clicks continue to open inside the app.
+    // Default: links open in the external browser (handled by the main
+    // process' window-open handler). Ctrl+Click keeps the link INSIDE the app
+    // by requesting a sized popup, which the main process routes to an internal
+    // BrowserWindow that shares this account's session.
 	document.addEventListener(
 		"click",
 		(event) => {
@@ -90,7 +92,9 @@ console.log("[Preload] Script starting...");
 			event.preventDefault();
 			event.stopPropagation();
 
-			shell.openExternal(url);
+            // The width/height features mark this as an in-app popup so the
+            // main-process handler opens it internally instead of externally.
+            window.open(url, "_blank", "width=1200,height=800");
 		},
 		true,
 	);

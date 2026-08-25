@@ -451,8 +451,36 @@ class AccountManager {
 			window.webContents.send("zoom-changed", zoomDirection);
 		});
 		this.attachIntuneSession(window.webContents.session);
-		window.webContents.setWindowOpenHandler(({ url }) => {
+        // Add-in / OAuth popups (e.g. the Mimecast login dialog) authenticate by
+        // calling window.open() with explicit popup dimensions and postMessage
+        // the result back to window.opener. ONLY those sized popups should open
+        // inside the app; ordinary links (including window.open(url, '_blank',
+        // 'noopener,noreferrer')) carry no width/height and must go to the
+        // external browser. A Ctrl+Click from the preload also requests a sized
+        // popup, so it too stays inside the app.
+        window.webContents.setWindowOpenHandler((details) => {
 			const { shell } = require('electron');
+            const { url, features } = details;
+            const featureStr = typeof features === 'string' ? features : '';
+            const isAuthPopup =
+                /(?:^|[,\s])(?:width|height|innerwidth|innerheight)\s*=/i.test(
+                    featureStr,
+                );
+            if (isAuthPopup && (isSafeExternalUrl(url) || url === 'about:blank')) {
+                return {
+                    action: 'allow',
+                    overrideBrowserWindowOptions: {
+                        autoHideMenuBar: true,
+                        webPreferences: {
+                            partition: account.partition,
+                            preload: path.join(__dirname, '..', 'browser', 'index.js'),
+                            nodeIntegration: false,
+                            contextIsolation: true,
+                            sandbox: true,
+                        },
+                    },
+                };
+            }
 			if (isSafeExternalUrl(url)) shell.openExternal(url);
 			return { action: 'deny' };
 		});
