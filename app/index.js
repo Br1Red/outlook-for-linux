@@ -74,10 +74,6 @@ app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 app.commandLine.appendSwitch('enable-ntlm-v2', config.ntlmV2enabled);
 app.commandLine.appendSwitch('try-supported-channel-layouts');
 
-// Enable S/MIME support - allow client certificates
-app.commandLine.appendSwitch('ignore-certificate-errors-spki-list');
-logger.info('Enabled client certificate support for S/MIME');
-
 if (process.env.XDG_SESSION_TYPE === 'wayland') {
 	logger.info('Running under Wayland, switching to PipeWire...');
 
@@ -273,10 +269,6 @@ function handleCertificateError() {
 	certificateModule.onAppCertificateError(arg, logger);
 }
 
-/**
- * Handle client certificate selection for S/MIME
- * This allows Outlook to use system certificates for encrypted emails
- */
 function handleSelectClientCertificate(
 	event,
 	webContents,
@@ -288,23 +280,14 @@ function handleSelectClientCertificate(
 
 	logger.info(`Client certificate requested for URL: ${url}`);
 	logger.info(`Available certificates: ${list.length}`);
-
-	if (list.length > 0) {
-		// Log certificate details for debugging
-		list.forEach((cert, index) => {
-			logger.info(
-				`Certificate ${index}: ${cert.subjectName} (Issuer: ${cert.issuerName})`,
-			);
-		});
-
-		// Select the first available certificate
-		// In a production app, you might want to prompt the user to choose
-		callback(list[0]);
-		logger.info(`Selected certificate: ${list[0].subjectName}`);
-	} else {
-		logger.warn('No client certificates available');
-		callback();
-	}
+	const certificate = certificateModule.selectClientCertificate({
+		list,
+		configuredSubject: config.clientCertSubject,
+		dialog,
+		logger,
+	});
+	if (certificate) logger.info(`Selected certificate: ${certificate.subjectName}`);
+	callback(certificate || undefined);
 }
 
 async function setBadgeCountHandler(_event, count) {

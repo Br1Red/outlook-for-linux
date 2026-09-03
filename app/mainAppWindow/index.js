@@ -42,14 +42,14 @@ exports.onAppReady = async function onAppReady(mainConfig) {
 	const mainApp = require("../index");
 
 	config = mainConfig.startupConfig;
+	logger = new LucidLog({
+		levels: config.appLogLevels.split(","),
+	});
 	if (config.auth?.intune?.enabled) {
 		intune = require("../intune");
 		await intune.initSso(config.auth.intune.user || "");
 	}
 	iconChooser = new TrayIconChooser(mainConfig.startupConfig);
-	logger = new LucidLog({
-		levels: config.appLogLevels.split(","),
-	});
 
 	// Create menus instance (will be shared across all accounts)
 	const menus = new Menus(null, config, iconChooser.getFile(), mainConfig);

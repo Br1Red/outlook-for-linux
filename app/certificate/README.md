@@ -1,6 +1,24 @@
-# Certificate
+# Certificates
 
-This folder contains the handlers for certicate.
+This folder contains the certificate handlers used by Electron.
+
+## Client certificates
+
+Outlook Web can request a client certificate through Chromium. The application
+uses certificates already available to Electron and asks which one to use when
+more than one certificate is offered. Set `clientCertSubject` to select one
+without a prompt:
+
+```json
+{
+    "clientCertSubject": "CN=alice@example.com"
+}
+```
+
+Electron does not implement the Native Messaging APIs required by the official
+Microsoft S/MIME extension. Therefore `OWA-SMIME4Linux` cannot run inside this
+application. Use it with Chromium or Chrome instead, following the
+[upstream installation instructions](https://github.com/schorschii/OWA-SMIME4Linux).
 
 You can define the valid certificates by prodiving the customCACertsFingerprints config option.
 
