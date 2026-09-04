@@ -96,12 +96,12 @@ function argv(configPath) {
 			},
 			clientCertPath: {
 				default: '',
-				describe: 'Path of a PKCS#12 client certificate (install it in the system certificate store before use)',
+				describe: 'Custom Client Certs for corporate authentication (certificate must be in pkcs12 format)',
 				type: 'string'
 			},
 			clientCertPassword: {
 				default: '',
-				describe: 'Password for the PKCS#12 client certificate; used when importing it externally',
+				describe: 'Custom Client Certs password for corporate authentication (certificate must be in pkcs12 format)',
 				type: 'string'
 			},
 			clientCertSubject: {
