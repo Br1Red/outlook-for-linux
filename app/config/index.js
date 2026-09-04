@@ -104,6 +104,11 @@ function argv(configPath) {
 				describe: 'Custom Client Certs password for corporate authentication (certificate must be in pkcs12 format)',
 				type: 'string'
 			},
+			clientCertSubject: {
+				default: '',
+				describe: 'Exact Electron subjectName (typically the certificate common name) of the client certificate to select when multiple certificates are available',
+				type: 'string'
+			},
 			closeAppOnCross: {
 				default: false,
 				describe: 'Close the app when clicking the close (X) cross',
