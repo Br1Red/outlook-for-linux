@@ -25,6 +25,10 @@ jobs:
       - name: Install dependencies
         run: yarn --link-duplicates --pure-lockfile
 
+      - name: Install Snapcraft
+        if: contains(github.ref, 'develop-outlook')
+        run: sudo snap install snapcraft --classic
+
       - name: Release
         if: contains(github.ref, 'develop-outlook')
         run: |
