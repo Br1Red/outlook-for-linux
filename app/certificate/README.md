@@ -6,12 +6,13 @@ This folder contains the certificate handlers used by Electron.
 
 Outlook Web can request a client certificate through Chromium. The application
 uses certificates already available to Electron and asks which one to use when
-more than one certificate is offered. Set `clientCertSubject` to select one
-without a prompt:
+more than one certificate is offered. Set `clientCertSubject` to the exact
+`subjectName` reported by Electron (typically the certificate common name) to
+select one without a prompt:
 
 ```json
 {
-    "clientCertSubject": "CN=alice@example.com"
+    "clientCertSubject": "alice@example.com"
 }
 ```
 

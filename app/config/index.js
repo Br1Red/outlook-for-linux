@@ -106,7 +106,7 @@ function argv(configPath) {
 			},
 			clientCertSubject: {
 				default: '',
-				describe: 'Exact subject name of the client certificate to select when multiple certificates are available',
+				describe: 'Exact Electron subjectName (typically the certificate common name) of the client certificate to select when multiple certificates are available',
 				type: 'string'
 			},
 			closeAppOnCross: {

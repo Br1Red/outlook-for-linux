@@ -21,7 +21,7 @@ Here is the list of available arguments and its usage:
 | customUserDir | Custom User Directory so that you can have multiple profiles | |
 | clearStorage | Whether to clear the storage before creating the window or not | false |
 | clientCertPath clientCertPassword | custom Client Cert for corporate authentication (PKCS#12 path and password) | |
-| clientCertSubject | Exact subject name of the client certificate to select when multiple certificates are available | |
+| clientCertSubject | Exact Electron subjectName (typically the certificate common name) of the client certificate to select when multiple certificates are available | |
 | closeAppOnCross | Close the app when clicking the close (X) cross | false |
 | config | config file location | ~/.config/outlook-for-linux/config.json |
 | defaultURLHandler | Default application to be used to open the HTTP URLs |  |
