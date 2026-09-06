@@ -121,9 +121,10 @@
         "network-manager-observe",
         "system-observe"
       ],
-      "publish": [
-        "snapStore"
-      ]
+      "publish": {
+        "provider": "github",
+        "releaseType": "draft"
+      }
     },
     "mac": {
       "category": "public.app-category.productivity"
