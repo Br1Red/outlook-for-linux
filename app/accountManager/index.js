@@ -4,7 +4,7 @@ const windowStateKeeper = require("electron-window-state");
 const { LucidLog } = require("lucid-log");
 const TrayIconChooser = require("../browser/tools/trayIconChooser");
 const TabManager = require("./tabManager");
-const { isSafeExternalUrl, isTrustedUrl } = require("../security");
+const { isSafeExternalUrl, isExternalNavigation } = require("../security");
 
 /**
  * Manages multiple Outlook accounts with isolated sessions
@@ -485,7 +485,7 @@ class AccountManager {
 			return { action: 'deny' };
 		});
 		window.webContents.on('will-navigate', (event, url) => {
-			if (!isTrustedUrl(url, this.config)) {
+			if (isExternalNavigation(url, window.webContents.getURL(), this.config)) {
 				event.preventDefault();
 				if (isSafeExternalUrl(url)) require('electron').shell.openExternal(url);
 			}

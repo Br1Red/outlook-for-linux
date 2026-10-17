@@ -40,6 +40,8 @@ function isValidText(value, maxLength = 10000) {
 module.exports = {
 	isTrustedWebContents,
 	isTrustedUrl,
+	isLoginPageUrl,
+	isExternalNavigation,
 	isSafeExternalUrl,
 	isValidAccountId,
 	isValidPartition,
@@ -68,4 +70,38 @@ function isSafeExternalUrl(url) {
 	} catch (_) {
 		return false;
 	}
+}
+function isLoginPageUrl(url, config) {
+	try {
+		const parsed = new URL(url);
+		if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+		return (
+			parsed.hostname.toLowerCase().startsWith('login.') &&
+			isTrustedUrl(url, config)
+		);
+	} catch (_) {
+		return false;
+	}
+}
+// A navigation belongs to the external browser only when it targets a host we
+// do not trust AND we are not in the middle of a sign-in flow. Microsoft
+// sign-in hands the user off to the tenant's own identity provider (ADFS,
+// Okta, ...), whose host cannot be known ahead of time; those hops must stay
+// in the account window or it is left stranded on "Jumping to your company's
+// login page" while the browser takes over.
+function isExternalNavigation(targetUrl, currentUrl, config) {
+	if (isTrustedUrl(targetUrl, config)) return false;
+
+	let current;
+	try {
+		current = new URL(currentUrl);
+	} catch (_) {
+		return true;
+	}
+	if (current.protocol !== 'http:' && current.protocol !== 'https:') return true;
+
+	// On a Microsoft login page, or already on the identity provider's own
+	// (untrusted) pages, keep the flow inside the app.
+	if (isTrustedUrl(currentUrl, config)) return !isLoginPageUrl(currentUrl, config);
+	return false;
 }

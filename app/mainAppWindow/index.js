@@ -9,7 +9,7 @@ const TrayIconChooser = require("../browser/tools/trayIconChooser");
 const { AppConfiguration } = require("../appConfiguration");
 const notificationModule = require("../notification");
 const QuickCompose = require("../quickCompose");
-const { isSafeExternalUrl, isTrustedUrl } = require("../security");
+const { isSafeExternalUrl, isExternalNavigation } = require("../security");
 
 /**
  * @type {TrayIconChooser}
@@ -375,7 +375,7 @@ async function openComposeWindow(url, accountManager) {
 		return { action: "deny" };
 	});
 	composeWindow.webContents.on("will-navigate", (event, nextUrl) => {
-		if (!isTrustedUrl(nextUrl, config)) {
+		if (isExternalNavigation(nextUrl, composeWindow.webContents.getURL(), config)) {
 			event.preventDefault();
 			if (isSafeExternalUrl(nextUrl)) require("electron").shell.openExternal(nextUrl);
 		}

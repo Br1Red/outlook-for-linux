@@ -1,6 +1,6 @@
 const { BrowserWindow, screen } = require('electron');
 const path = require('path');
-const { isSafeExternalUrl, isTrustedUrl } = require('../security');
+const { isSafeExternalUrl, isExternalNavigation } = require('../security');
 
 /**
  * Quick Compose Dialog - A small popup window for composing emails
@@ -76,7 +76,7 @@ class QuickCompose {
 			return { action: 'deny' };
 		});
 		this.dialogWindow.webContents.on('will-navigate', (event, nextUrl) => {
-			if (!isTrustedUrl(nextUrl, this.config)) {
+			if (isExternalNavigation(nextUrl, this.dialogWindow.webContents.getURL(), this.config)) {
 				event.preventDefault();
 				if (isSafeExternalUrl(nextUrl)) require('electron').shell.openExternal(nextUrl);
 			}

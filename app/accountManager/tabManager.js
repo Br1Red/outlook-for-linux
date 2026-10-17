@@ -1,4 +1,4 @@
-const { isSafeExternalUrl, isTrustedUrl } = require('../security');
+const { isSafeExternalUrl, isExternalNavigation } = require('../security');
 
 /**
  * TabManager - Manages tabs within a single main window
@@ -125,7 +125,7 @@ class TabManager {
 			return { action: 'deny' };
 		});
 		tabWebContents.on('will-navigate', (event, url) => {
-			if (!isTrustedUrl(url, this.config)) {
+			if (isExternalNavigation(url, tabWebContents.getURL(), this.config)) {
 				event.preventDefault();
 				if (isSafeExternalUrl(url)) require('electron').shell.openExternal(url);
 			}
